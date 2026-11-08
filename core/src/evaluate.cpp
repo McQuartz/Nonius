@@ -135,23 +135,27 @@ namespace nonius
             }
 
             // A05 Brummen
-            if (t.humExcessDb >= 15.0)
+            if (t.humExcessDb >= 10.0)
                 out.push_back (make ("A05", "Brummen", Severity::warning, fmt ("Brummen bei %.0f Hz", t.humFrequency),
                                      fmt2 ("Notch-Filter %.0f/%.0f Hz (+ 3. Oberton), Kabel/Erdung prüfen", t.humFrequency, 2 * t.humFrequency),
                                      fmt ("%.0f dB über Nachbarn", t.humExcessDb), 4.0));
 
-            // A06 Raumhall (experimentell)
-            if (t.reverbDecays < 5)
-                out.push_back (make ("A06", "Raumhall", Severity::noData, "Zu wenige freie Ausklingvorgänge zum Schätzen", "",
+            // A06 Raumhall (experimentell). Grenzwerte auf dem Rohwert, kalibriert mit simulierten
+            // Räumen und Mikro 15–30 cm: Kabine ≈ 0,25 s, Zimmer 0,3–0,4 s, hallig ≥ 0,4 s.
+            if (t.reverbDecays < 10)
+                out.push_back (make ("A06", "Raumhall", Severity::noData, "Zu wenige Ausklingvorgänge zum Schätzen", "",
                                      std::to_string (t.reverbDecays) + " Ausklänge", 0, "experimentell"));
             else
             {
-                Severity s = t.reverbSeconds > 0.6 ? Severity::problem : t.reverbSeconds > 0.4 ? Severity::warning : Severity::ok;
+                Severity s = t.reverbSeconds > 0.45 ? Severity::problem : t.reverbSeconds > 0.32 ? Severity::warning : Severity::ok;
                 if (t.reverbConfidence < 0.6 && s != Severity::ok) s = Severity::info;
-                out.push_back (make ("A06", "Raumhall", s, fmt ("Raum hörbar (Nachhall ca. %.2f s)", t.reverbSeconds),
+                const std::string text = s == Severity::ok
+                    ? std::string ("Raum kaum hörbar")
+                    : fmt ("Raum hörbar (entspricht grob einem Raum mit ca. %.1f s Nachhall)", t.reverbSecondsCloseMic);
+                out.push_back (make ("A06", "Raumhall", s, text,
                                      s == Severity::ok ? "" : "Aufnahme: Raum dämpfen (Absorber hinter und neben dir, Decke über dir), näher ans Mikro. Mix: De-Reverb vor dem ersten Kompressor, weniger komprimieren",
-                                     fmt2 ("%.2f s (Sicherheit %.1f)", t.reverbSeconds, t.reverbConfidence),
-                                     std::max (0.0, (t.reverbSeconds - 0.4) * 20.0), "experimentell, noch nicht kalibriert"));
+                                     fmt2 ("Abkling-Wert %.2f s, umgerechnet ca. %.1f s", t.reverbSeconds, t.reverbSecondsCloseMic),
+                                     std::max (0.0, (t.reverbSeconds - 0.32) * 30.0), "experimentell, mit simulierten Räumen kalibriert"));
             }
 
             // A07 Popps
@@ -236,24 +240,24 @@ namespace nonius
         // ---------------- Stufe 4: Ton
         if (t.sibilantToVowelDb > -149.0)
         {
-            // Startwerte: S-Laute über −4 dB relativ zu Vokalen = zu scharf, unter −22 dB = gelispelt
+            // Startwerte (kalibriert mit High-Shelf-Tests): S-Energie > −1 dB relativ zu Vokalen = zu scharf, < −14 dB = gelispelt
             Severity s = Severity::ok;
             std::string text = fmt ("Zischlaute %.1f dB relativ zu Vokalen", t.sibilantToVowelDb);
             std::string fix;
-            if (t.sibilantToVowelDb > -4.0)
+            if (t.sibilantToVowelDb > -1.0)
             {
-                s = t.sibilantToVowelDb > 0.0 ? Severity::problem : Severity::warning;
-                fix = "De-Esser bei ca. " + hz (t.sibilantFrequency) + fmt (", ca. %.0f dB Reduktion", roundHalf (t.sibilantToVowelDb + 8.0));
+                s = t.sibilantToVowelDb > 2.0 ? Severity::problem : Severity::warning;
+                fix = "De-Esser bei ca. " + hz (t.sibilantFrequency) + fmt (", ca. %.0f dB Reduktion", std::clamp (roundHalf (t.sibilantToVowelDb + 4.0), 2.0, 10.0));
             }
-            else if (! raw && t.sibilantToVowelDb < -22.0)
+            else if (! raw && t.sibilantToVowelDb < -14.0)
             {
                 s = Severity::warning;
                 text = "Klingt evtl. gelispelt (" + text + ")";
                 fix = "De-Esser-Reduktion verringern";
             }
-            out.push_back (make (t.sibilantToVowelDb < -22.0 ? "T07" : "T06", "Zischlaute", s, text, fix,
+            out.push_back (make (t.sibilantToVowelDb < -14.0 ? "T07" : "T06", "Zischlaute", s, text, fix,
                                  fmt ("%.1f dB, ", t.sibilantToVowelDb) + std::to_string (t.sibilants.count) + " S-Laute, Schwerpunkt " + hz (t.sibilantFrequency),
-                                 std::max (0.0, t.sibilantToVowelDb + 4.0), "Startwerte, werden kalibriert"));
+                                 std::max (0.0, t.sibilantToVowelDb + 1.0), "Startwerte, werden kalibriert"));
         }
         else
             out.push_back (make ("T06", "Zischlaute", Severity::noData, "Zu wenige S-Laute oder Vokale erkannt", "", "–"));

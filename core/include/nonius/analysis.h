@@ -97,9 +97,12 @@ namespace nonius
         double sibilantFrequency = 0;        // Schwerpunkt der S-Energie
 
         // Raum
-        double reverbSeconds = 0;            // blinde Schätzung (experimentell)
+        double reverbSeconds = 0;            // blinde Schätzung, Rohwert (steilste Abfälle)
+        double reverbSecondsCloseMic = 0;    // grob umgerechnet auf echte RT60 bei Mikro 15–30 cm
         double reverbConfidence = 0;
         int reverbDecays = 0;
+        double roomTailDb = -150;            // Pegel 60–120 ms nach Wortende relativ zum Wort (Raumanteil)
+        int roomTailCount = 0;
 
         // Stereo
         double correlation = 1;

@@ -155,34 +155,35 @@ namespace nonius
         t.activePeakDb = ampToDb (activePeak);
         t.hotFramePercent = activeCount > 0 ? 100.0 * hot / activeCount : 0.0;
 
-        // ---------------------------------------------------------- Rauschen in Pausen (A-bewertet)
+        // ---------------------------------------------------------- Rauschen (A-bewertet)
+        // Dichter Rap hat kaum lange Pausen. Deshalb: die leisesten 50-ms-Momente der ganzen Spur.
+        // Gilt als Rauschboden, wenn sie deutlich (>= 15 dB) unter den lauten Teilen liegen.
         {
             AWeighting aw (sr);
             std::vector<float> a (n);
             for (std::size_t i = 0; i < n; ++i)
                 a[i] = (float) aw.process (mono[i]);
-            auto fa = frameLevels (a, frame100);
-            std::vector<double> pauses;
-            int digitalSilence = 0;
-            for (std::size_t i = 0; i < fa.rmsDb.size() && i < active100.size(); ++i)
+            auto fa = frameLevels (a, (std::size_t) std::lround (sr * 0.02));
+            std::vector<double> nonSilent;
+            int silent = 0, quiet = 0;
+            for (double v : fa.rmsDb)
             {
-                // Pause: deutlich unter der Aktivitätsschwelle, Nachbarn ebenfalls inaktiv (kein Ausklingen)
-                const bool neighboursQuiet = (i == 0 || ! active100[i - 1]) && (i + 1 >= active100.size() || ! active100[i + 1]);
-                if (! active100[i] && neighboursQuiet)
-                {
-                    if (fa.rmsDb[i] < -110.0) ++digitalSilence;
-                    else pauses.push_back (fa.rmsDb[i]);
-                }
+                if (v < -110.0) ++silent; else nonSilent.push_back (v);
+                if (v < actThr) ++quiet;
             }
-            if (pauses.size() >= 20)
-            {
-                t.noiseFloorDbA = percentile (pauses, 20);
-                t.noiseFloorReliable = true;
-            }
-            else if (digitalSilence >= 20)
+            if (silent >= 50 && silent * 2 >= quiet)
             {
                 t.noiseFloorDbA = -150.0; // Pausen digital still (geschnitten/Gate)
                 t.noiseFloorReliable = true;
+            }
+            else if (nonSilent.size() >= 250)
+            {
+                const double q = percentile (nonSilent, 1);
+                if (q < percentile (nonSilent, 95) - 15.0)
+                {
+                    t.noiseFloorDbA = q;
+                    t.noiseFloorReliable = true;
+                }
             }
         }
 
@@ -229,7 +230,7 @@ namespace nonius
                 if (c < 20) continue;
                 if (f20.rmsDb[i] > toDb (s / c) + 10.0)
                 {
-                    const double time = (double) i * 0.02;
+                    const double time = (double) (i * frame20) / sr;
                     if (time - lastEvent > 0.3)
                         t.wordPeaks.timesSeconds.push_back (time);
                     lastEvent = time;
@@ -248,19 +249,20 @@ namespace nonius
             auto fl = frameLevels (low, frame5);
             auto fb = frameLevels (mono, frame5);
             double lastEvent = -1.0;
-            for (std::size_t i = 100; i < fl.rmsDb.size(); ++i)
+            for (std::size_t i = 2; i < fl.rmsDb.size(); ++i)
             {
                 // lokales Bass-Mittel der letzten 500 ms
                 double s = 0.0;
-                for (std::size_t j = i - 100; j < i; ++j) s += std::pow (10.0, fl.rmsDb[j] / 10.0);
-                const double localMean = toDb (s / 100.0);
+                const std::size_t j0 = i > 100 ? i - 100 : 0;
+                for (std::size_t j = j0; j < i; ++j) s += std::pow (10.0, fl.rmsDb[j] / 10.0);
+                const double localMean = toDb (s / (double) (i - j0));
                 const bool jump = fl.rmsDb[i] - fl.rmsDb[i - 2] >= 12.0;          // Anstieg < 10 ms
                 const bool aboveLocal = fl.rmsDb[i] >= localMean + 10.0;
                 const bool dominant = fl.rmsDb[i] >= fb.rmsDb[i] - 3.0;          // Bass (< 100 Hz) dominiert den Frame
                 const bool loudEnough = fb.rmsDb[i] > actThr;
                 if (jump && aboveLocal && dominant && loudEnough)
                 {
-                    const double time = (double) i * 0.005;
+                    const double time = (double) (i * frame5) / sr;
                     if (time - lastEvent > 0.15)
                         t.plosives.timesSeconds.push_back (time);
                     lastEvent = time;
@@ -292,23 +294,34 @@ namespace nonius
             std::vector<double> fineExcessSum (fine.size(), 0.0);
             int frames = 0;
 
-            for (std::size_t start = 0; start + (std::size_t) N <= n; start += (std::size_t) hop)
+            // Vorlauf: Pegel aller Frames, um die leisesten 15 % fürs Brumm-Spektrum zu finden
+            auto frameLevel = [&] (std::size_t start)
             {
                 double s = 0.0;
                 for (std::size_t i = start; i < start + (std::size_t) N; ++i) s += (double) mono[i] * mono[i];
-                const double lvl = toDb (s / N);
+                return toDb (s / N);
+            };
+            std::vector<double> allLevels;
+            for (std::size_t start = 0; start + (std::size_t) N <= n; start += (std::size_t) hop)
+            {
+                const double l = frameLevel (start);
+                if (l > -110.0) allLevels.push_back (l);
+            }
+            const double quietLimit = allLevels.size() >= 30 ? percentile (allLevels, 15) : -200.0;
+
+            for (std::size_t start = 0; start + (std::size_t) N <= n; start += (std::size_t) hop)
+            {
+                const double lvl = frameLevel (start);
                 auto spec = powerSpectrum (&mono[start], (std::size_t) N, window);
 
-                if (lvl <= actThr)
+                if (lvl > -110.0 && lvl <= quietLimit)
                 {
-                    if (lvl > -110.0 && lvl < actThr - 10.0)
-                    {
-                        if (pauseSpectrum.empty()) pauseSpectrum.assign (spec.size(), 0.0);
-                        for (std::size_t k = 0; k < spec.size(); ++k) pauseSpectrum[k] += spec[k];
-                        ++pauseFrames;
-                    }
-                    continue;
+                    if (pauseSpectrum.empty()) pauseSpectrum.assign (spec.size(), 0.0);
+                    for (std::size_t k = 0; k < spec.size(); ++k) pauseSpectrum[k] += spec[k];
+                    ++pauseFrames;
                 }
+                if (lvl <= actThr)
+                    continue;
 
                 ++frames;
                 auto bp = bandPowers (spec, sr, (std::size_t) N, bands);
@@ -373,7 +386,7 @@ namespace nonius
             }
 
             // Brummen: 50/60-Hz-Reihe im Pausen-Spektrum
-            if (pauseFrames >= 10)
+            if (pauseFrames >= 5)
             {
                 const double binHz = sr / N;
                 auto excessAt = [&] (double f)
@@ -421,12 +434,14 @@ namespace nonius
             for (std::size_t start = 0; start + (std::size_t) N <= n; start += (std::size_t) N / 2, ++idx)
             {
                 auto spec = powerSpectrum (&mono[start], (std::size_t) N, window);
-                double total = 0.0, hi = 0.0, centroidNum = 0.0, hiNum = 0.0;
+                double total = 0.0, hi = 0.0, mid = 0.0, centroidNum = 0.0, hiNum = 0.0;
                 for (std::size_t k = 1; k < spec.size(); ++k)
                 {
                     total += spec[k];
                     centroidNum += spec[k] * k * binHz;
                     if (k >= kHi) { hi += spec[k]; hiNum += spec[k] * k * binHz; }
+                    const double f = k * binHz;
+                    if (f >= 200.0 && f < 2000.0) mid += spec[k];
                 }
                 const double lvl = toDb (total);
                 const double centroid = total > 0 ? centroidNum / total : 0.0;
@@ -437,14 +452,14 @@ namespace nonius
                 if (isS)
                 {
                     ++run;
-                    runPeak = std::max (runPeak, lvl);
+                    runPeak = std::max (runPeak, toDb (hi)); // S-Energie über 4,5 kHz
                     sFreqWeighted += hiNum; sFreqWeight += hi;
                 }
                 else
                 {
                     closeRun (time);
                     if (lvl > actThr && centroid < 2000.0)
-                        vowelLevels.push_back (lvl);
+                        vowelLevels.push_back (toDb (mid)); // Vokal-Energie 200 Hz–2 kHz
                 }
             }
             closeRun ((double) n / sr);
@@ -452,7 +467,7 @@ namespace nonius
             t.sibilants.count = (int) t.sibilants.timesSeconds.size();
             t.sibilants.perMinute = t.sibilants.count / activeMinutes;
             if (sLevels.size() >= 5 && vowelLevels.size() >= 50)
-                t.sibilantToVowelDb = median (sLevels) - percentile (vowelLevels, 75);
+                t.sibilantToVowelDb = percentile (sLevels, 75) - percentile (vowelLevels, 75);
             t.sibilantFrequency = sFreqWeight > 0 ? sFreqWeighted / sFreqWeight : 0.0;
         }
 
@@ -464,59 +479,98 @@ namespace nonius
             for (std::size_t i = 0; i < n; ++i) bp[i] = (float) lp.process (hp.process (mono[i]));
             const auto frame10 = (std::size_t) std::lround (sr * 0.01);
             auto fe = frameLevels (bp, frame10);
-            const auto& e = fe.rmsDb;
-
-            std::vector<double> rts;
-            std::size_t i = 1;
-            while (i + 2 < e.size())
+            std::vector<double> e (fe.rmsDb.size());
+            for (std::size_t k = 0; k < e.size(); ++k)
             {
-                // Start: lokales Maximum über der Aktivitätsschwelle
-                if (! (e[i] > actThr && e[i] >= e[i - 1] && e[i] >= e[i + 1])) { ++i; continue; }
-                const double top = e[i];
-                std::size_t j = i + 1;
-                double minSoFar = top;
-                bool gateCut = false;
-                while (j < e.size())
+                double p = 0; int c = 0;
+                for (std::size_t j = (k > 0 ? k - 1 : 0); j <= k + 1 && j < e.size(); ++j)
                 {
-                    if (e[j] < -110.0) { gateCut = true; break; }
-                    if (e[j] > minSoFar + 1.5) break;  // wieder lauter: neues Wort
-                    minSoFar = std::min (minSoFar, e[j]);
-                    if (top - e[j] >= 25.0) break;
-                    ++j;
+                    if (fe.rmsDb[j] < -110.0) { p = 0; c = 0; break; }
+                    p += std::pow (10.0, fe.rmsDb[j] / 10.0); ++c;
                 }
-                if (! gateCut && top - minSoFar >= 20.0)
+                e[k] = c > 0 ? toDb (p / c) : -150.0;
+            }
+
+            // Steilste Abfälle: Der Raum lässt kein schnelleres Abklingen zu als seine Nachhallzeit.
+            // Für jedes 120-ms-Fenster mit gleichmäßigem Abfall (Korrelation <= -0,97, >= 6 dB)
+            // wird die Steigung gemessen; die steilsten 10 % ergeben die Schätzung.
+            std::vector<double> rts;
+            struct Win { std::size_t len; double maxR; };
+            for (const Win w : { Win { 12, -0.97 }, Win { 24, -0.94 }, Win { 40, -0.9 } })
+            {
+                const std::size_t W = w.len;
+                std::size_t i = 0;
+                while (i + W < e.size())
                 {
-                    // Regression im Bereich -5 bis -20 dB unter dem Maximum
-                    double sx = 0, sy = 0, sxx = 0, sxy = 0; int c = 0;
-                    for (std::size_t k = i; k <= j && k < e.size(); ++k)
+                    bool ok = e[i] > actThr - 10.0;
+                    double sx = 0, sy = 0, sxx = 0, sxy = 0, syy = 0;
+                    for (std::size_t k = 0; k < W && ok; ++k)
                     {
-                        const double d = top - e[k];
-                        if (d >= 5.0 && d <= 20.0)
-                        {
-                            const double x = (double) (k - i) * 0.01, y = e[k];
-                            sx += x; sy += y; sxx += x * x; sxy += x * y; ++c;
-                        }
+                        if (e[i + k] < -110.0) { ok = false; break; } // Gate/Schnitt
+                        const double x = (double) k * 0.01, y = e[i + k];
+                        sx += x; sy += y; sxx += x * x; sxy += x * y; syy += y * y;
                     }
-                    if (c >= 4)
+                    if (ok && e[i] - e[i + W - 1] >= 6.0)
                     {
-                        const double slope = (c * sxy - sx * sy) / (c * sxx - sx * sx); // dB/s
-                        if (slope < 0.0)
+                        const double c = (double) W;
+                        const double cov = c * sxy - sx * sy;
+                        const double r = cov / std::sqrt ((c * sxx - sx * sx) * (c * syy - sy * sy) + 1e-30);
+                        const double slope = cov / (c * sxx - sx * sx);
+                        if (r <= w.maxR && slope < 0.0)
                         {
                             const double rt = -60.0 / slope;
-                            if (rt > 0.08 && rt < 3.0) rts.push_back (rt);
+                            if (rt > 0.05 && rt < 4.0) { rts.push_back (rt); i += W / 2; continue; }
                         }
                     }
+                    ++i;
                 }
-                i = std::max (i + 1, j);
+            }
+
+            // Raumanteil: Wie laut ist es 60–120 ms nach einem Wortende, relativ zum Wort davor?
+            // Trockene Aufnahme: sehr leise (−30 dB und weniger). Halliger Raum: deutlich lauter.
+            {
+                std::vector<double> tails;
+                std::size_t k = 5;
+                while (k + 13 < e.size())
+                {
+                    double pre = 0;
+                    for (std::size_t j = k - 5; j < k; ++j) pre += std::pow (10.0, e[j] / 10.0);
+                    const double preDb = toDb (pre / 5.0);
+                    if (preDb > actThr && e[k + 2] <= preDb - 10.0)
+                    {
+                        bool clean = true;
+                        double tail = 0;
+                        for (std::size_t j = k + 6; j <= k + 12; ++j)
+                        {
+                            if (e[j] < -110.0 || e[j] > e[k + 2] + 1.0) { clean = false; break; }
+                            tail += std::pow (10.0, e[j] / 10.0);
+                        }
+                        if (clean)
+                        {
+                            tails.push_back (toDb (tail / 7.0) - preDb);
+                            k += 15;
+                            continue;
+                        }
+                    }
+                    ++k;
+                }
+                t.roomTailCount = (int) tails.size();
+                if (tails.size() >= 10)
+                    t.roomTailDb = median (tails);
             }
 
             t.reverbDecays = (int) rts.size();
-            if (rts.size() >= 5)
+            if (rts.size() >= 10)
             {
-                // Freie Ausklingvorgänge sind die steilsten, die der Raum zulässt: unteres Perzentil.
-                t.reverbSeconds = percentile (rts, 20);
-                const double spread = percentile (rts, 40) / std::max (1e-3, percentile (rts, 10));
-                t.reverbConfidence = std::clamp (std::min (1.0, rts.size() / 30.0) * (spread < 1.6 ? 1.0 : 0.7), 0.0, 1.0);
+                // Rohwert: steilste 10 % der Abfälle. Bei nahem Mikro (15–30 cm) unterschätzt das lange
+                // Nachhallzeiten, weil der Direktschall dominiert. Korrektur aus simulierten Räumen
+                // (docs/kalibrierung.md): RT ≈ 0,25 + (Rohwert − 0,25) × 3,2 oberhalb von 0,25 s. Grob (±50 %),
+                // deshalb wird mit dem Rohwert bewertet und die Umrechnung nur als Orientierung angezeigt.
+                const double rawRt = percentile (rts, 10);
+                t.reverbSeconds = rawRt;
+                t.reverbSecondsCloseMic = rawRt > 0.25 ? 0.25 + (rawRt - 0.25) * 3.2 : rawRt;
+                const double spread = percentile (rts, 30) / std::max (1e-3, percentile (rts, 5));
+                t.reverbConfidence = std::clamp (std::min (1.0, rts.size() / 50.0) * (spread < 1.6 ? 1.0 : 0.7), 0.0, 1.0);
             }
         }
 

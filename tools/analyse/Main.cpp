@@ -87,7 +87,7 @@ namespace
           << "| Spektrale Neigung | " << num (t.spectrum.tiltDbPerOct) << " dB/Okt. |\n"
           << "| < 80 Hz / 100–250 Hz / > 10 kHz | " << num (t.rumbleDb) << " / " << num (t.proximityDb) << " / " << num (t.airDb) << " dB (relativ zu 200 Hz–5 kHz) |\n"
           << "| Zischlaute | " << t.sibilants.count << " (" << num (t.sibilants.perMinute) << "/min), " << num (t.sibilantToVowelDb) << " dB zu Vokalen |\n"
-          << "| Nachhall-Schätzung | " << (t.reverbDecays >= 5 ? num (t.reverbSeconds, 2) + " s aus " + juce::String (t.reverbDecays) + " Ausklängen" : juce::String::fromUTF8 ("–")) << " |\n";
+          << "| Nachhall-Schätzung | " << (t.reverbDecays >= 10 ? num (t.reverbSeconds, 2) + " s (umgerechnet ca. " + num (t.reverbSecondsCloseMic, 1) + " s) aus " + juce::String (t.reverbDecays) + " Abfällen" : juce::String::fromUTF8 ("–")) << " |\n";
         if (t.channels >= 2)
             s << "| Korrelation / Balance | " << num (t.correlation, 2) << " / " << num (t.balanceDb) << " dB |\n";
         return s;
