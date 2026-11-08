@@ -11,8 +11,10 @@ Host: Ableton Live 12, Windows, 48 kHz, Blockgröße 128. Sechs Log-Dateien, fü
 | Export erkennen | Ja, `OFFLINE_RENDER_START/ENDE` in allen Instanzen, mit RELEASE/PREPARE davor und danach. |
 | Spurname/-farbe | Ja, kommt an, auch Umbenennen und Farbwechsel live. Name und Farbe kommen in getrennten Meldungen. |
 | Shared Memory zwischen Instanzen | Ja, erste Instanz legt an, alle weiteren öffnen. |
-| Stumm / Gerät aus | Unklar: alle Instanzen liefen weiter. Ob die richtige Spur betroffen war, muss Ace bestätigen. |
-| Fenster verschwindet bei Spurwechsel | Nicht gemessen: `isShowing()` meldete nie „unsichtbar“. Fix: zusätzlich das Host-Fenster (HWND) prüfen. |
+| Gerät aus (Test 2) | Live ruft processBlock gar nicht mehr auf (0 Blöcke/s), die Instanz auf dem Master läuft weiter. Nonius erkennt „Gerät aus“ daran, dass keine Blöcke mehr kommen. |
+| Spur stumm | Noch nicht eindeutig gemessen, im ersten Test liefen alle Instanzen weiter. Nicht kritisch: Die Master-Instanz „Summe“ erkennt stumme Spuren ohnehin. |
+| Fenster verschwindet bei Spurwechsel | Ja, laut Ace springen die Fenster mit der gewählten Spur um (Auto-Hide). Die Probe hat das nicht erkannt (`isShowing()`), Fix mit HWND-Prüfung ist gebaut, aber noch nicht getestet (Test 2 lief mit altem Build). |
+| Grundrauschen Master | Bei Stopp ca. −63 dBFS auf dem Master (vermutlich Analog-Emulation). Nonius braucht eine Stille-Schwelle, die das berücksichtigt. |
 | Master-Peak | bis +4,8 dBFS (Float, kein Clipping im Plugin), Nonius muss > 0 dBFS anzeigen können. |
 
 ## Fehler in der Probe
