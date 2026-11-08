@@ -169,6 +169,7 @@ namespace nonius
         std::string measured;    // Messwert (für die Tabelle)
         double priority = 0;
         std::string note;        // Einschränkung (z. B. "MP3", "experimentell")
+        double frequency = 0;    // betroffene Frequenz (Hz), 0 = keine (für die Anzeige im Spektrum)
     };
 
     std::vector<Finding> evaluateVocal (const TrackAnalysis& t, bool isRawRecording);

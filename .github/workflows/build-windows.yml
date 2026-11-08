@@ -16,12 +16,18 @@ jobs:
         run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
 
       - name: Build
-        run: cmake --build build --config Release --target NoniusProbe_VST3 nonius_core_tests NoniusAnalyse --parallel
+        run: cmake --build build --config Release --target Nonius_VST3 NoniusProbe_VST3 nonius_core_tests NoniusAnalyse --parallel
 
       - name: Test (Mess-Kern)
         run: ctest --test-dir build -C Release --output-on-failure
 
-      - name: Upload VST3
+      - name: Upload Nonius VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nonius-VST3-Windows
+          path: build/plugin/Nonius_artefacts/Release/VST3/
+
+      - name: Upload Probe VST3
         uses: actions/upload-artifact@v4
         with:
           name: NoniusProbe-VST3-Windows
