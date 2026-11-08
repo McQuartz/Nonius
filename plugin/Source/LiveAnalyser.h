@@ -14,7 +14,9 @@
 
 namespace nonius
 {
-    enum class PluginRole { leadVocal = 0, beat = 1, sum = 2 };
+    // leadVocal = bearbeitete Vocal-Spur, rawVocal = Rohaufnahme (Zahlen bleiben fest, stehen im Projekt)
+    enum class PluginRole { leadVocal = 0, beat = 1, sum = 2, rawVocal = 3 };
+    inline bool isVocal (PluginRole r) { return r == PluginRole::leadVocal || r == PluginRole::rawVocal; }
 
     struct Snapshot
     {
@@ -29,6 +31,8 @@ namespace nonius
         FourBands four;
         double sideToMid = -150;
         double spreadLu = 0;              // Short-term P90 − P10
+        double gapDepthDb = 0;            // Abstand laute Wortteile (P95) zu Lücken (P10), 20-ms-Fenster;
+                                          // klein = Lücken gefüllt (Hall, Delay, starke Kompression)
     };
 
     class LiveAnalyser : private juce::Thread

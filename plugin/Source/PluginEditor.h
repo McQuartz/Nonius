@@ -32,7 +32,7 @@ private:
         juce::String label, valueText;
         bool hasValue = false;
         double value = 0, lo = 0, hi = 0, mid = 0;
-        bool hasMid = false, lowerIsFine = false; // lowerIsFine: unter dem Ziel ist kein Fehler
+        bool hasMid = false, lowerIsFine = false, hasTarget = true; // lowerIsFine: unter dem Ziel ist kein Fehler
     };
 
     void timerCallback() override;

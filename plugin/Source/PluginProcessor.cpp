@@ -51,6 +51,7 @@ nonius::PluginRole NoniusProcessor::guessRole (const juce::String& name, nonius:
     };
     if (any ({ "master", "summe", "mix bus", "mixbus", "2bus", "2-bus" })) return nonius::PluginRole::sum;
     if (any ({ "beat", "instrumental", "inst", "riddim" }))               return nonius::PluginRole::beat;
+    if (any ({ "dry", "roh", "raw", "rec", "aufnahme" }))                  return nonius::PluginRole::rawVocal;
     if (any ({ "vox", "vocal", "voc", "lead", "rap", "stimme", "gesang" })) return nonius::PluginRole::leadVocal;
     return fallback;
 }
@@ -103,7 +104,7 @@ void NoniusProcessor::setStateInformation (const void* data, int size)
         const auto state = juce::ValueTree::fromXml (*xml);
         if (! state.hasType ("NONIUS")) return;
         roleChosen = (bool) state.getProperty ("roleChosen", false);
-        live.setRole ((nonius::PluginRole) juce::jlimit (0, 2, (int) state.getProperty ("role", 0)));
+        live.setRole ((nonius::PluginRole) juce::jlimit (0, 3, (int) state.getProperty ("role", 0)));
         setStage ((int) state.getProperty ("stage", 5));
     }
 }

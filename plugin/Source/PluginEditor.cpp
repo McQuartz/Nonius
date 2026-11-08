@@ -135,7 +135,8 @@ NoniusEditor::NoniusEditor (NoniusProcessor& p)
     setLookAndFeel (&lnf);
     setOpaque (true);
 
-    roleBox.addItem ("Lead Vocal", 1);
+    roleBox.addItem ("Vocal roh (Aufnahme)", 4);
+    roleBox.addItem ("Vocal bearbeitet", 1);
     roleBox.addItem ("Beat", 2);
     roleBox.addItem ("Summe / Master", 3);
     roleBox.setSelectedId ((int) proc.getRole() + 1, juce::dontSendNotification);
@@ -191,7 +192,7 @@ void NoniusEditor::resized()
     findingsArea = { 16, 364, kWidth - 32 - 320 - 12, kHeight - 364 - 16 };
     metersArea = { findingsArea.getRight() + 12, 364, 320, kHeight - 364 - 16 };
 
-    roleBox.setBounds (300, 11, 132, 26);
+    roleBox.setBounds (272, 11, 166, 26);
     for (int i = 0; i < 5; ++i) stageRects[i] = { 446 + i * 66, 8, 64, 32 };
     centralButton.setBounds (790, 11, 86, 26);
     holdButton.setBounds (882, 11, 78, 26);
@@ -200,7 +201,7 @@ void NoniusEditor::resized()
 
 bool NoniusEditor::targetMode() const
 {
-    return shown != nullptr && shown->role != nonius::PluginRole::leadVocal && ! proc.analyser().profile().octaves.empty();
+    return shown != nullptr && ! nonius::isVocal (shown->role) && ! proc.analyser().profile().octaves.empty();
 }
 
 void NoniusEditor::timerCallback()
@@ -305,7 +306,7 @@ void NoniusEditor::paintHeader (juce::Graphics& g)
     }
     g.setColour (shownTrackName.isEmpty() ? C::dim : C::text);
     g.setFont (sans (14.0f, true));
-    g.drawFittedText (shownTrackName.isEmpty() ? u8 ("Spur") : shownTrackName, x, 0, 292 - x, 48, juce::Justification::centredLeft, 1, 0.8f);
+    g.drawFittedText (shownTrackName.isEmpty() ? u8 ("Spur") : shownTrackName, x, 0, 264 - x, 48, juce::Justification::centredLeft, 1, 0.8f);
 
     // Stufen 1–5 mit Ampel-Balken (schlimmster Befund der Stufe)
     const int selected = proc.getStage();
@@ -513,22 +514,23 @@ void NoniusEditor::paintFindings (juce::Graphics& g, juce::Rectangle<int> area)
         // Kompakte Liste aller Punkte
         std::vector<const nonius::Finding*> all (issues);
         all.insert (all.end(), hints.begin(), hints.end());
-        const int rowH = 20;
-        const int maxRows = (body.getHeight() - 22) / rowH;
-        for (int i = 0; i < (int) all.size() && i < maxRows; ++i)
+        for (int i = 0; i < (int) all.size(); ++i)
         {
             const auto* f = all[(size_t) i];
-            auto row = body.removeFromTop (rowH);
-            g.setColour (severityColour (f->severity));
-            g.fillEllipse ((float) row.getX(), (float) row.getCentreY() - 3.5f, 7.0f, 7.0f);
-            g.setColour (C::text);
-            g.setFont (sans (13.0f, true));
-            g.drawText (u8 (f->title), row.getX() + 16, row.getY(), 150, rowH, juce::Justification::centredLeft, true);
-            g.setColour (C::muted);
-            g.setFont (sans (12.5f));
             juce::String line = u8 (f->text);
             if (! f->fix.empty()) line << u8 ("  →  ") << u8 (f->fix);
-            g.drawText (line, row.getX() + 170, row.getY(), row.getWidth() - 170, rowH, juce::Justification::centredLeft, true);
+            const bool twoLines = juce::GlyphArrangement::getStringWidth (sans (12.5f), line) > (float) body.getWidth() - 174.0f;
+            const int rowH = twoLines ? 36 : 20;
+            if (rowH > body.getHeight() - 22) break;
+            auto row = body.removeFromTop (rowH);
+            g.setColour (severityColour (f->severity));
+            g.fillEllipse ((float) row.getX(), (float) row.getY() + 6.5f, 7.0f, 7.0f);
+            g.setColour (C::text);
+            g.setFont (sans (13.0f, true));
+            g.drawText (u8 (f->title), row.getX() + 16, row.getY(), 150, 20, juce::Justification::centredLeft, true);
+            g.setColour (C::muted);
+            g.setFont (sans (12.5f));
+            g.drawFittedText (line, row.getX() + 170, row.getY() + 2, row.getWidth() - 170, rowH - 2, juce::Justification::topLeft, twoLines ? 2 : 1, 1.0f);
         }
         moreRect = body.removeFromBottom (20);
         g.setColour (C::accent);
@@ -547,46 +549,62 @@ void NoniusEditor::paintFindings (juce::Graphics& g, juce::Rectangle<int> area)
         g.drawText (u8 ("Alle Messwerte liegen im Zielbereich."), body.removeFromTop (20), juce::Justification::centredLeft);
     }
 
-    const int itemH = 56;
-    const int maxItems = juce::jmin (4, (body.getHeight() - 22) / itemH);
+    // Höhe pro Punkt richtet sich nach der Textlänge (bis 2 Zeilen je Text und Fix), nichts wird abgeschnitten
+    const int tx0 = body.getX() + 36, tw = body.getWidth() - 36;
+    auto linesFor = [tw] (const juce::Font& font, const juce::String& text)
+    {
+        return juce::GlyphArrangement::getStringWidth (font, text) > (float) tw - 4.0f ? 2 : 1;
+    };
     int shownItems = 0;
-    for (std::size_t n = 0; n < issues.size() && shownItems < maxItems; ++n, ++shownItems)
+    for (std::size_t n = 0; n < issues.size() && shownItems < 4; ++n)
     {
         const auto* f = issues[n];
+        juce::String line = u8 (f->text);
+        if (! f->measured.empty() && ! line.contains (u8 (f->measured))) line << u8 ("  (") << u8 (f->measured) << ")";
+        const juce::String fix = f->fix.empty() ? juce::String() : u8 ("→ ") + u8 (f->fix);
+        const int textLines = linesFor (sans (13.0f), line);
+        const int fixLines = fix.isEmpty() ? 0 : linesFor (mono (13.0f), fix);
+        const int itemH = 22 + 17 * textLines + 17 * fixLines + 8;
+        if (itemH > body.getHeight() - 22) break;
+        ++shownItems;
+
         auto item = body.removeFromTop (itemH);
         const auto col = severityColour (f->severity);
 
-        const juce::Rectangle<float> badge ((float) item.getX(), (float) item.getY() + 2.0f, 22.0f, 22.0f);
+        const juce::Rectangle<float> badge ((float) item.getX(), (float) item.getY() + 1.0f, 22.0f, 22.0f);
         g.setColour (col);
         g.fillEllipse (badge);
         g.setColour (C::bg);
         g.setFont (sans (12.0f, true));
         g.drawText (juce::String ((int) n + 1), badge, juce::Justification::centred);
 
-        const int tx = item.getX() + 36, tw = item.getWidth() - 36;
+        const int tx = tx0;
         g.setColour (C::text);
         g.setFont (sans (15.0f, true));
         const auto title = u8 (f->title);
-        g.drawText (title, tx, item.getY(), tw, 20, juce::Justification::centredLeft, true);
+        g.drawText (title, tx, item.getY(), tw, 22, juce::Justification::centredLeft, true);
         const int titleW = (int) juce::GlyphArrangement::getStringWidth (sans (15.0f, true), title);
 
         g.setFont (sans (11.0f));
         g.setColour (C::dim);
-        juce::String tag = juce::String (f->id) + u8 ("  ·  ") + nonius::severityLabel (f->severity);
+        const int st = nonius::stageOf (f->id);
+        juce::String tag;
+        if (st >= 1) tag << "Stufe " << st << " " << u8 (kStageNames[st - 1]) << u8 ("  ·  ");
+        tag << f->id << u8 ("  ·  ") << nonius::severityLabel (f->severity);
         if (! f->note.empty()) tag << u8 ("  ·  ") << u8 (f->note);
-        g.drawText (tag, tx + titleW + 12, item.getY() + 1, tw - titleW - 12, 20, juce::Justification::centredLeft, true);
+        g.drawText (tag, tx + titleW + 12, item.getY() + 1, tw - titleW - 12, 22, juce::Justification::centredLeft, true);
 
+        int y = item.getY() + 22;
         g.setColour (C::muted);
         g.setFont (sans (13.0f));
-        juce::String line = u8 (f->text);
-        if (! f->measured.empty() && ! juce::String (u8 (f->text)).contains (u8 (f->measured))) line << u8 ("  (") << u8 (f->measured) << ")";
-        g.drawText (line, tx, item.getY() + 19, tw, 18, juce::Justification::centredLeft, true);
+        g.drawFittedText (line, tx, y, tw, 17 * textLines, juce::Justification::topLeft, textLines, 1.0f);
+        y += 17 * textLines;
 
-        if (! f->fix.empty())
+        if (fixLines > 0)
         {
             g.setColour (C::accent);
             g.setFont (mono (13.0f));
-            g.drawText (u8 ("→ ") + u8 (f->fix), tx, item.getY() + 36, tw, 18, juce::Justification::centredLeft, true);
+            g.drawFittedText (fix, tx, y, tw, 17 * fixLines, juce::Justification::topLeft, fixLines, 1.0f);
         }
     }
 
@@ -622,6 +640,13 @@ std::vector<NoniusEditor::Meter> NoniusEditor::buildMeters() const
         x.valueText = x.hasValue ? text : u8 ("–");
         m.push_back (x);
     };
+    auto noTarget = [&] (const char* label, bool has, double v, double scaleMin, double scaleMax, juce::String text)
+    {
+        Meter x;
+        x.label = u8 (label); x.hasValue = valid && has; x.value = v; x.lo = scaleMin; x.hi = scaleMax; x.hasTarget = false;
+        x.valueText = x.hasValue ? text : u8 ("–");
+        m.push_back (x);
+    };
     auto fromProfile = [&] (const char* label, const char* key, bool has, double v, juce::String text)
     {
         const auto it = prof.ranges.find (key);
@@ -641,14 +666,24 @@ std::vector<NoniusEditor::Meter> NoniusEditor::buildMeters() const
 
     switch (shown->role)
     {
+        case nonius::PluginRole::rawVocal:
+            fixed ("Peaks beim Singen/Rappen", t.activePeakDb > -149.0, t.activePeakDb, -12.0, -6.0, num (t.activePeakDb, 1, "dBFS"));
+            fixed ("Clipping", true, t.clippingRuns, -0.25, 0.25, juce::String (t.clippingRuns) + " Stellen");
+            fixed ("Popps", true, t.plosives.perMinute, 0.0, 2.0, num (t.plosives.perMinute, 1, "/min"));
+            fixed ("Rauschen in Pausen (A)", t.noiseFloorReliable && t.noiseFloorDbA > -149.0, t.noiseFloorDbA, -100.0, -60.0, num (t.noiseFloorDbA, 0, "dBFS"));
+            fixed ("Raumhall (Abklingwert)", t.reverbDecays >= 10, t.reverbSeconds, 0.0, 0.32, num (t.reverbSeconds, 2, "s"));
+            fixed ("Rumpeln unter 80 Hz", t.rumbleDb > -149.0, t.rumbleDb, -60.0, -25.0, num (t.rumbleDb, 0, "dB"));
+            noTarget ("Abstand Wort zu Lücke", shown->gapDepthDb > 0, shown->gapDepthDb, 0.0, 45.0, num (shown->gapDepthDb, 1, "dB"));
+            break;
+
         case nonius::PluginRole::leadVocal:
             fixed ("Zischlaute (S zu Vokal)", t.sibilantToVowelDb > -149.0, t.sibilantToVowelDb, -14.0, -1.0, num (t.sibilantToVowelDb, 1, "dB"));
             fixed (u8"Lautstärke-Schwankung", t.loudness.shortTermP90 > -149.0, shown->spreadLu, 0.0, 6.0, num (shown->spreadLu, 1, "LU"));
             fixed ("Crest 100 ms", true, t.crest100msDb, 6.5, 14.0, num (t.crest100msDb, 1, "dB"));
             fixed (u8"Wortspitzen", true, t.wordPeaks.perMinute, 0.0, 5.0, num (t.wordPeaks.perMinute, 1, "/min"));
-            fixed ("Rauschen in Pausen (A)", t.noiseFloorReliable && t.noiseFloorDbA > -149.0, t.noiseFloorDbA, -100.0, -60.0, num (t.noiseFloorDbA, 0, "dBFS"));
-            fixed ("Raumhall (Abklingwert)", t.reverbDecays >= 10, t.reverbSeconds, 0.0, 0.32, num (t.reverbSeconds, 2, "s"));
             fixed ("Rumpeln unter 80 Hz", t.rumbleDb > -149.0, t.rumbleDb, -60.0, -25.0, num (t.rumbleDb, 0, "dB"));
+            noTarget ("Abstand Wort zu Lücke", shown->gapDepthDb > 0, shown->gapDepthDb, 0.0, 45.0, num (shown->gapDepthDb, 1, "dB"));
+            noTarget ("Spektrale Neigung", true, t.spectrum.tiltDbPerOct, -4.0, 1.0, num (t.spectrum.tiltDbPerOct, 1, "dB/Okt."));
             break;
 
         case nonius::PluginRole::beat:
@@ -700,7 +735,7 @@ void NoniusEditor::paintMeters (juce::Graphics& g, juce::Rectangle<int> area)
         auto row = body.removeFromTop (33);
         g.setColour (C::muted);
         g.setFont (sans (12.5f));
-        g.drawText (mt.label, row.getX(), row.getY(), row.getWidth() - 100, 16, juce::Justification::centredLeft, true);
+        g.drawText (mt.hasTarget ? mt.label : mt.label + u8 ("  (Ziel folgt)"), row.getX(), row.getY(), row.getWidth() - 100, 16, juce::Justification::centredLeft, true);
         g.setColour (mt.hasValue ? C::text : C::dim);
         g.setFont (mono (13.0f));
         g.drawText (mt.valueText, row.getRight() - 110, row.getY(), 110, 16, juce::Justification::centredRight);
@@ -714,6 +749,17 @@ void NoniusEditor::paintMeters (juce::Graphics& g, juce::Rectangle<int> area)
 
         g.setColour (C::range);
         g.fillRoundedRectangle (bar, 2.0f);
+        if (! mt.hasTarget)
+        {
+            // noch kein Ziel (braucht Referenz-Stems): nur Wert auf fester Skala zeigen
+            if (mt.hasValue)
+            {
+                const float x = bar.getX() + (float) juce::jlimit (0.0, 1.0, (mt.value - mt.lo) / (mt.hi - mt.lo)) * bar.getWidth();
+                g.setColour (C::muted);
+                g.fillRoundedRectangle (x - 2.0f, bar.getY() - 4.0f, 4.0f, bar.getHeight() + 8.0f, 1.5f);
+            }
+            continue;
+        }
         g.setColour (C::dim);
         g.fillRect (juce::Rectangle<float> (xOf (mt.lo), bar.getY(), xOf (mt.hi) - xOf (mt.lo), bar.getHeight()));
         if (mt.hasMid)

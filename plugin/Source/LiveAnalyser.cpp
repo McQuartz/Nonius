@@ -219,7 +219,7 @@ namespace nonius
         s->sampleRate = sr;
         s->secondsMeasured = (double) histFilled / sr;
 
-        const Role coreRole = s->role == PluginRole::leadVocal ? Role::leadVocal
+        const Role coreRole = isVocal (s->role)                ? Role::leadVocal
                             : s->role == PluginRole::beat      ? Role::beat
                                                                : Role::sum;
         s->track = analyseTrack (audio, "", coreRole);
@@ -232,15 +232,39 @@ namespace nonius
         s->four = fourBandBalance (t);
         s->sideToMid = sideToMidDb (audio);
         s->spreadLu = t.loudness.shortTermP90 - t.loudness.shortTermP10;
+        {
+            const std::size_t frame = (std::size_t) (sr * 0.02);
+            std::vector<double> lv;
+            for (std::size_t i = 0; i + frame <= audio.numSamples(); i += frame)
+            {
+                double p = 0;
+                for (const auto& ch : audio.channels)
+                    for (std::size_t j = i; j < i + frame; ++j) p += (double) ch[j] * ch[j];
+                lv.push_back (toDb (p / (double) (frame * audio.channels.size())));
+            }
+            if (lv.size() > 50)
+            {
+                auto sorted = lv;
+                std::sort (sorted.begin(), sorted.end());
+                const double p95 = sorted[sorted.size() * 95 / 100];
+                std::vector<double> act; // digitale Stille / lange Pausen ausklammern
+                for (double v : sorted) if (v > p95 - 60.0) act.push_back (v);
+                if (act.size() > 50) s->gapDepthDb = p95 - act[act.size() / 10];
+            }
+        }
 
         auto& out = s->findings;
-        if (s->role == PluginRole::leadVocal)
+        if (s->role == PluginRole::rawVocal)
         {
-            // Aufnahme-Checks (A…) wie auf der Rohspur, alles andere wie auf der bearbeiteten Spur
-            for (auto& f : evaluateVocal (t, true))
-                if (startsWith (f.id, 'A') || startsWith (f.id, 'G')) out.push_back (std::move (f));
+            // Rohaufnahme: Aufnahme-Checks gelten, Dynamik nur als Info
+            out = evaluateVocal (t, true);
+        }
+        else if (s->role == PluginRole::leadVocal)
+        {
+            // Bearbeitete Spur: Aufnahme-Checks passen hier nicht (Hall/Delay füllen die Pausen,
+            // Pegel ist nach Kompressor/Limiter bewusst hoch), außer DC-Offset
             for (auto& f : evaluateVocal (t, false))
-                if (! startsWith (f.id, 'A') && ! startsWith (f.id, 'G')) out.push_back (std::move (f));
+                if (! startsWith (f.id, 'A') || f.id == "A09") out.push_back (std::move (f));
         }
         else
         {

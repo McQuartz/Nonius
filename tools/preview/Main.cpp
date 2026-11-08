@@ -44,7 +44,7 @@ int main (int argc, char* argv[])
     proc.updateTrackProperties (tp);
 
     const auto rolle = args.getValue ("rolle", "summe");
-    proc.setRole (rolle == "vocal" ? nonius::PluginRole::leadVocal : rolle == "beat" ? nonius::PluginRole::beat : nonius::PluginRole::sum, true);
+    proc.setRole (rolle == "roh" ? nonius::PluginRole::rawVocal : rolle == "vocal" ? nonius::PluginRole::leadVocal : rolle == "beat" ? nonius::PluginRole::beat : nonius::PluginRole::sum, true);
     proc.setStage (args.getValue ("stufe", "5").getIntValue());
 
     // 30 s ab --start durchspielen, etwa 15-fach schneller als Echtzeit
