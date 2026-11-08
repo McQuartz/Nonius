@@ -1,0 +1,6 @@
+add_executable(nonius_core_tests core_tests.cpp)
+target_link_libraries(nonius_core_tests PRIVATE nonius_core)
+if(MSVC)
+    target_compile_options(nonius_core_tests PRIVATE /utf-8)
+endif()
+add_test(NAME nonius_core_tests COMMAND nonius_core_tests)

@@ -17,4 +17,9 @@ FetchContent_Declare(
     GIT_SHALLOW    TRUE)
 FetchContent_MakeAvailable(juce)
 
+enable_testing()
+
+add_subdirectory(core)
+add_subdirectory(tests)
+add_subdirectory(tools/analyse)
 add_subdirectory(probe)
