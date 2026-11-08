@@ -37,7 +37,11 @@ void NoniusProbeEditor::resized()
 void NoniusProbeEditor::timerCallback()
 {
     // Frage 1: Sichtbarkeit des Fensters mitschreiben, wenn sie sich ändert.
-    const bool showing = isShowing();
+    // isShowing() allein hat im ersten Test nichts gemeldet, daher zusaetzlich das
+    // Host-Fenster selbst pruefen.
+    auto* peer = getPeer();
+    const bool showing = isShowing()
+                         && NoniusProbeProcessor::isNativeRootWindowVisible (peer != nullptr ? peer->getNativeHandle() : nullptr);
 
     if (showing != wasShowing)
     {

@@ -16,6 +16,15 @@ namespace
         std::atomic<int> nextId { 1 };
     };
 
+    // Funktionslokale statische Variable: lebt so lange wie die Plugin-DLL im Prozess.
+    // (Phase-0-Fix: ein lokaler SharedResourcePointer wurde nach jedem Zugriff wieder
+    // geloescht, deshalb hatte jede Instanz die Nummer 1.)
+    ProcessWideRegistry& getRegistry()
+    {
+        static ProcessWideRegistry registry;
+        return registry;
+    }
+
     juce::uint32 getProcessId()
     {
        #if JUCE_WINDOWS
@@ -182,9 +191,9 @@ NoniusProbeProcessor::NoniusProbeProcessor()
                         .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
                         .withOutput ("Output", juce::AudioChannelSet::stereo(), true))
 {
-    juce::SharedResourcePointer<ProcessWideRegistry> registry;
-    instanceId = registry->nextId.fetch_add (1);
-    const int live = registry->liveInstances.fetch_add (1) + 1;
+    auto& registry = getRegistry();
+    instanceId = registry.nextId.fetch_add (1);
+    const int live = registry.liveInstances.fetch_add (1) + 1;
 
     log = std::make_unique<ProbeLog> (instanceId);
     shm = std::make_unique<SharedMemoryTest> (instanceId);
@@ -192,7 +201,7 @@ NoniusProbeProcessor::NoniusProbeProcessor()
     logEvent ("START", "pid=" + juce::String (getProcessId())
                        + " instanz=" + juce::String (instanceId)
                        + " instanzen_im_prozess=" + juce::String (live)
-                       + " registry_adresse=" + juce::String::toHexString ((juce::pointer_sized_int) (void*) &(*registry))
+                       + " registry_adresse=" + juce::String::toHexString ((juce::pointer_sized_int) (void*) &registry)
                        + " host=" + juce::PluginHostType().getHostDescription()
                        + " juce=" + juce::SystemStats::getJUCEVersion());
     logEvent ("SHARED_MEMORY", shm->describeOpen());
@@ -204,8 +213,8 @@ NoniusProbeProcessor::NoniusProbeProcessor()
 NoniusProbeProcessor::~NoniusProbeProcessor()
 {
     stopTimer();
-    juce::SharedResourcePointer<ProcessWideRegistry> registry;
-    const int live = registry->liveInstances.fetch_sub (1) - 1;
+    auto& registry = getRegistry();
+    const int live = registry.liveInstances.fetch_sub (1) - 1;
     logEvent ("ENDE", "instanzen_im_prozess_danach=" + juce::String (live));
 }
 
@@ -304,14 +313,14 @@ void NoniusProbeProcessor::timerCallback()
         const double blocksPerSecond = (double) (blocks - blocksAtLastStatus) / seconds;
         const float peak = peakSinceLastStatus.exchange (0.0f);
 
-        juce::SharedResourcePointer<ProcessWideRegistry> registry;
+        auto& registry = getRegistry();
 
         lastStatusLine = "bloecke_pro_s=" + juce::String (blocksPerSecond, 1)
                        + " spielt=" + juce::String (playing ? 1 : 0)
                        + " position_vorhanden=" + juce::String (lastHasPosition.load() ? 1 : 0)
                        + " peak_db=" + juce::String (juce::Decibels::gainToDecibels (peak, -120.0f), 1)
                        + " offline=" + juce::String (offline ? 1 : 0)
-                       + " instanzen_im_prozess=" + juce::String (registry->liveInstances.load());
+                       + " instanzen_im_prozess=" + juce::String (registry.liveInstances.load());
 
         logEvent ("STATUS", lastStatusLine);
         logEvent ("SHARED_MEMORY_HERZSCHLAG", shm->heartbeatAndList (blocks));
@@ -348,6 +357,24 @@ void NoniusProbeProcessor::addMarker()
 {
     ++markerCount;
     logEvent ("MARKER", juce::String (markerCount));
+}
+
+bool NoniusProbeProcessor::isNativeRootWindowVisible (void* nativeHandle)
+{
+   #if JUCE_WINDOWS
+    if (nativeHandle == nullptr)
+        return false;
+
+    auto root = GetAncestor ((HWND) nativeHandle, GA_ROOT);
+
+    if (root == nullptr)
+        return false;
+
+    return IsWindowVisible (root) != FALSE && IsIconic (root) == FALSE;
+   #else
+    juce::ignoreUnused (nativeHandle);
+    return true;
+   #endif
 }
 
 void NoniusProbeProcessor::logEditorVisibility (bool visible)

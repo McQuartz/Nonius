@@ -59,6 +59,9 @@ public:
     juce::String getStatusText() const;
     void addMarker();
     void logEditorVisibility (bool visible);
+
+    // Prüft das Host-Fenster (Windows: Wurzelfenster sichtbar und nicht minimiert).
+    static bool isNativeRootWindowVisible (void* nativeHandle);
     void logEvent (const juce::String& event, const juce::String& details = {});
 
 private:
