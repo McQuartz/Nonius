@@ -95,6 +95,7 @@ namespace nonius
 
         // Live-Spektrum
         std::vector<double> window, smoothedPower;
+        double smoothedTotal = 0, recentPeakDb = -150;
         std::vector<float> scratch;
         mutable juce::SpinLock liveLock;
         std::vector<double> liveDb;

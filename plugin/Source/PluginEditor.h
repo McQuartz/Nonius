@@ -50,7 +50,7 @@ private:
     juce::TooltipWindow tooltips { this, 500 };
 
     juce::ComboBox roleBox;
-    juce::TextButton centralButton, holdButton { "Festhalten" }, measureButton { "Messen" };
+    juce::TextButton centralButton, holdButton { "Festhalten" }, measureButton;
 
     std::shared_ptr<const nonius::Snapshot> shown;
     std::vector<double> live;

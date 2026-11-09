@@ -200,7 +200,7 @@ NoniusEditor::NoniusEditor (NoniusProcessor& p)
     measureButton.getProperties().set ("filled", true);
     measureButton.setColour (juce::TextButton::buttonColourId, C::accent);
     measureButton.setColour (juce::TextButton::textColourOffId, C::bg);
-    measureButton.setTooltip (u8 ("Messung neu starten (z. B. nach einer Änderung am Mix)"));
+    measureButton.setTooltip (u8 ("Gemessen wird nur, solange Live abspielt. Klick: Messung neu starten (z. B. nach einer Änderung am Mix)"));
     measureButton.onClick = [this]
     {
         proc.analyser().requestReset();
@@ -227,9 +227,9 @@ void NoniusEditor::resized()
 
     roleBox.setBounds (272, 11, 166, 26);
     for (int i = 0; i < 5; ++i) stageRects[i] = { 446 + i * 66, 8, 64, 32 };
-    centralButton.setBounds (790, 11, 86, 26);
-    holdButton.setBounds (882, 11, 78, 26);
-    measureButton.setBounds (966, 11, 58, 26);
+    centralButton.setBounds (780, 11, 84, 26);
+    holdButton.setBounds (870, 11, 78, 26);
+    measureButton.setBounds (954, 11, 70, 26);
 }
 
 bool NoniusEditor::targetMode() const
@@ -248,6 +248,16 @@ void NoniusEditor::timerCallback()
     bool full = name != shownTrackName || playing != wasPlaying;
     shownTrackName = name;
     wasPlaying = playing;
+
+    // Messen-Knopf zeigt den Zustand: gefüllt "● Misst" bei Wiedergabe, umrandet "Pausiert" sonst
+    const bool filled = measureButton.getProperties()["filled"];
+    if (filled != playing || measureButton.getButtonText().isEmpty())
+    {
+        measureButton.getProperties().set ("filled", playing);
+        measureButton.setButtonText (playing ? u8 ("● Misst") : u8 ("Pausiert"));
+        measureButton.setColour (juce::TextButton::textColourOffId, playing ? C::bg : C::muted);
+        measureButton.repaint();
+    }
 
     if (! frozen)
     {
@@ -497,7 +507,7 @@ void NoniusEditor::paintSpectrum (juce::Graphics& g, juce::Rectangle<int> area)
     const double fMin = centres.front() / std::sqrt (2.0), fMax = centres.back() * std::sqrt (2.0);
     auto xOf = [&] (double f) { return chart.getX() + (float) (std::log (f / fMin) / std::log (fMax / fMin)) * chart.getWidth(); };
 
-    const double yTop = target ? 9.0 : 0.0, yBottom = target ? -9.0 : -42.0, yStep = target ? 3.0 : 6.0;
+    const double yTop = target ? 12.0 : 0.0, yBottom = target ? -12.0 : -42.0, yStep = target ? 3.0 : 6.0;
     auto yOf = [&] (double db)
     {
         db = juce::jlimit (yBottom, yTop, db);
@@ -557,6 +567,15 @@ void NoniusEditor::paintSpectrum (juce::Graphics& g, juce::Rectangle<int> area)
             const float y0 = target ? yOf (0.0) : chart.getBottom(), y1 = yOf (shownV);
             g.setColour (col);
             g.fillRect (juce::Rectangle<float> (x0 + 6.0f, std::min (y0, y1), std::max (2.0f, x1 - x0 - 12.0f), std::max (2.0f, std::fabs (y1 - y0))));
+            if (target && std::fabs (shownV) > yTop)
+            {
+                // außerhalb der Skala: Wert dazuschreiben statt nur am Rand kleben
+                g.setColour (C::bg);
+                g.setFont (sans (12.0f, true));
+                const float ty = shownV > 0 ? y1 + 4.0f : y1 - 20.0f;
+                g.drawText ((shownV > 0 ? "+" : u8 ("−")) + juce::String (std::fabs (shownV), 1) + " dB",
+                            juce::Rectangle<float> (x0, ty, x1 - x0, 16.0f), juce::Justification::centred);
+            }
         }
 
         // Live-Strich: was gerade spielt

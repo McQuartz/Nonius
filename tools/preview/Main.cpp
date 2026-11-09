@@ -8,10 +8,11 @@ namespace
 {
     struct FakePlayHead : juce::AudioPlayHead
     {
+        std::atomic<bool> playing { true };
         juce::Optional<PositionInfo> getPosition() const override
         {
             PositionInfo p;
-            p.setIsPlaying (true);
+            p.setIsPlaying (playing.load());
             return p;
         }
     };
@@ -46,6 +47,47 @@ int main (int argc, char* argv[])
     const auto rolle = args.getValue ("rolle", "summe");
     proc.setRole (rolle == "roh" ? nonius::PluginRole::rawVocal : rolle == "vocal" ? nonius::PluginRole::leadVocal : rolle == "beat" ? nonius::PluginRole::beat : nonius::PluginRole::sum, true);
     proc.setStage (args.getValue ("stufe", "5").getIntValue());
+
+    // --echtzeit N: N Sekunden in Echtzeit wie in Live abspielen (mit Stopp von Sekunde 20 bis 25)
+    // und jede Sekunde den Zustand der Messung ausgeben. Prüft Timing, Pausen und Live-Anzeige.
+    if (args.containsKey ("echtzeit"))
+    {
+        const double total = args["echtzeit"].getDoubleValue();
+        const auto sr0 = reader->sampleRate;
+        juce::AudioBuffer<float> blk (numCh, 512);
+        juce::MidiBuffer m;
+        juce::int64 pos = (juce::int64) (args.getValue ("start", "0").getDoubleValue() * sr0);
+        const auto t0 = juce::Time::getMillisecondCounterHiRes();
+        int lastSec = -1;
+        for (juce::int64 n = 0; (double) n / sr0 < total; n += 512)
+        {
+            const double t = (double) n / sr0;
+            head.playing = ! (t >= 20.0 && t < 25.0);
+            if (head.playing.load())
+            {
+                reader->read (&blk, 0, 512, pos, true, numCh > 1);
+                pos += 512;
+            }
+            else blk.clear(); // Live liefert bei Stopp Stille
+            proc.processBlock (blk, m);
+            const double due = t0 + t * 1000.0;
+            while (juce::Time::getMillisecondCounterHiRes() < due) juce::Thread::sleep (1);
+            if ((int) t != lastSec)
+            {
+                lastSec = (int) t;
+                auto s = proc.analyser().latest();
+                int issues = 0;
+                for (auto& f : s->findings) if (f.severity == nonius::Severity::warning || f.severity == nonius::Severity::problem) ++issues;
+                const auto live = proc.analyser().liveOctaves();
+                juce::String l;
+                for (double v : live) l << juce::String (v, 1) << " ";
+                std::cout << "t=" << lastSec << " play=" << (int) proc.isPlaying() << " puffer=" << juce::String (proc.analyser().bufferedSeconds(), 1)
+                          << " gueltig=" << (int) s->valid << " gemessen=" << juce::String (s->secondsMeasured, 1)
+                          << " befunde=" << issues << " live=[" << l << "]\n";
+            }
+        }
+        return 0;
+    }
 
     // 30 s ab --start durchspielen, etwa 15-fach schneller als Echtzeit
     const auto sr = reader->sampleRate;

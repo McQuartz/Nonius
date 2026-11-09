@@ -54,6 +54,7 @@ namespace nonius
         histPos = histFilled = newSinceAnalysis = newSinceSpectrum = 0;
         bufferedSecs = 0.0;
         smoothedPower.assign (centres.size(), 0.0);
+        smoothedTotal = 0; recentPeakDb = -150;
         {
             const juce::SpinLock::ScopedLockType l (liveLock);
             liveDb.clear();
@@ -107,6 +108,7 @@ namespace nonius
                 histPos = histFilled = newSinceAnalysis = newSinceSpectrum = 0;
                 bufferedSecs = 0.0;
                 std::fill (smoothedPower.begin(), smoothedPower.end(), 0.0);
+                smoothedTotal = 0;
                 {
                     const juce::SpinLock::ScopedLockType l (liveLock);
                     liveDb.clear();
@@ -171,7 +173,15 @@ namespace nonius
         // Bänder wie im Profil der aktuellen Rolle (Vocal-Profil hat weniger Oktaven), damit der Live-Strich passt
         const auto& rp = profileFor (getRole());
         const auto& cs = rp.octaveCentres.empty() ? centres : rp.octaveCentres;
-        if (smoothedPower.size() != cs.size()) smoothedPower.assign (cs.size(), 0.0);
+        if (smoothedPower.size() != cs.size()) { smoothedPower.assign (cs.size(), 0.0); smoothedTotal = 0; }
+
+        // Nur Stellen mit Signal: In Pausen (Atmer, Rauschen, Hallfahne) ist die Klangbalance
+        // bedeutungslos und ließ die Live-Striche springen.
+        double ms = 0;
+        for (float v : scratch) ms += (double) v * v;
+        const double levelDb = toDb (ms / (double) kSpectrumSize);
+        recentPeakDb = std::max (levelDb, recentPeakDb - 0.4); // fällt ca. 10 dB pro Sekunde
+        if (levelDb < -65.0 || levelDb < recentPeakDb - 30.0) return;
 
         const auto spec = powerSpectrum (scratch.data(), kSpectrumSize, window);
         const double binHz = sr / (double) kSpectrumSize;
@@ -180,20 +190,25 @@ namespace nonius
         for (std::size_t b = 1; b < spec.size(); ++b)
         {
             const double f = (double) b * binHz;
-            if (f < 20.0 || f > 20000.0) continue;
+            // gleicher Bereich wie die Langzeit-Messung im Kern (1/6-Oktaven 31,5 Hz bis 16 kHz)
+            if (f < 29.7 || f > std::min (16000.0, sr * 0.45) * 1.06) continue;
             total += spec[b];
             for (std::size_t i = 0; i < cs.size(); ++i)
                 if (f >= cs[i] / std::sqrt (2.0) && f < cs[i] * std::sqrt (2.0)) { bands[i] += spec[b]; break; }
         }
-        if (total <= 1e-20) return; // Stille: Anzeige stehen lassen
+        if (total <= 1e-20) return;
 
-        // Glättung ca. 0,4 s
+        // Leistung glätten (ca. 0,5 s), erst dann ins Verhältnis setzen: laute Stellen zählen mehr
+        // als leise, genau wie in der Langzeit-Messung. Vorher wurde das Verhältnis pro Block geglättet,
+        // da wog ein leiser Block so viel wie ein lauter.
+        constexpr double a = 0.08;
+        const bool first = smoothedTotal <= 0;
+        smoothedTotal = first ? total : smoothedTotal + a * (total - smoothedTotal);
         std::vector<double> out (cs.size());
         for (std::size_t i = 0; i < cs.size(); ++i)
         {
-            const double rel = bands[i] / total;
-            smoothedPower[i] = smoothedPower[i] <= 0 ? rel : smoothedPower[i] + 0.12 * (rel - smoothedPower[i]);
-            out[i] = toDb (smoothedPower[i]);
+            smoothedPower[i] = first ? bands[i] : smoothedPower[i] + a * (bands[i] - smoothedPower[i]);
+            out[i] = toDb (smoothedPower[i] / smoothedTotal);
         }
         const juce::SpinLock::ScopedLockType l (liveLock);
         liveDb = std::move (out);
