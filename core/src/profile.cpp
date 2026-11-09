@@ -75,6 +75,27 @@ namespace nonius
         return r;
     }
 
+    double wordGapDepthDb (const AudioBuffer& audio)
+    {
+        if (audio.channels.empty()) return 0.0;
+        const std::size_t frame = (std::size_t) (audio.sampleRate * 0.02);
+        if (frame == 0) return 0.0;
+        std::vector<double> lv;
+        for (std::size_t i = 0; i + frame <= audio.numSamples(); i += frame)
+        {
+            double p = 0;
+            for (const auto& ch : audio.channels)
+                for (std::size_t j = i; j < i + frame; ++j) p += (double) ch[j] * ch[j];
+            lv.push_back (toDb (p / (double) (frame * audio.channels.size())));
+        }
+        if (lv.size() <= 50) return 0.0;
+        std::sort (lv.begin(), lv.end());
+        const double p95 = lv[lv.size() * 95 / 100];
+        std::vector<double> act;
+        for (double v : lv) if (v > p95 - 60.0) act.push_back (v);
+        return act.size() > 50 ? p95 - act[act.size() / 10] : 0.0;
+    }
+
     double sideToMidDb (const AudioBuffer& a)
     {
         if (a.channels.size() < 2) return -150.0;
