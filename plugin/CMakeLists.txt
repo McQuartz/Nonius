@@ -24,6 +24,8 @@ else()
     set(NONIUS_HAS_VOCAL_PROFILE 0)
 endif()
 juce_add_binary_data(NoniusData SOURCES ${NONIUS_DATA_FILES})
+# Jedes Ziel, das NoniusData nutzt (Plugin, Vorschau), sieht, ob das Vocal-Profil eingebaut ist.
+target_compile_definitions(NoniusData INTERFACE NONIUS_HAS_VOCAL_PROFILE=${NONIUS_HAS_VOCAL_PROFILE})
 
 target_sources(Nonius PRIVATE
     Source/PluginProcessor.cpp
@@ -35,8 +37,7 @@ target_compile_definitions(Nonius PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
-    JUCE_DISPLAY_SPLASH_SCREEN=0
-    NONIUS_HAS_VOCAL_PROFILE=${NONIUS_HAS_VOCAL_PROFILE})
+    JUCE_DISPLAY_SPLASH_SCREEN=0)
 
 if(MSVC)
     target_compile_options(Nonius PRIVATE /utf-8)
