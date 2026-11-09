@@ -15,7 +15,7 @@ public:
     juce::Font getPopupMenuFont() override;
 };
 
-class NoniusEditor : public juce::AudioProcessorEditor, private juce::Timer
+class NoniusEditor : public juce::AudioProcessorEditor, public juce::TooltipClient, private juce::Timer
 {
 public:
     explicit NoniusEditor (NoniusProcessor&);
@@ -61,6 +61,10 @@ private:
     juce::Rectangle<int> headerArea, spectrumArea, findingsArea, metersArea;
     juce::Rectangle<int> stageRects[5], moreRect, logoRect { 10, 6, 130, 36 };
     void showInfoMenu();
+    void paintGlossary (juce::Graphics&, juce::Rectangle<int> area);
+    juce::String getTooltip() override; // Erklärung der Messgröße unter der Maus (Meter)
+    bool showGlossary = false;
+    std::vector<std::pair<juce::Rectangle<int>, juce::String>> meterRows; // Zeile -> Name, für Tooltips
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NoniusEditor)
 };

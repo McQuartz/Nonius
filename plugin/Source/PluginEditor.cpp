@@ -80,6 +80,39 @@ namespace
 
     const char* const kStageNames[5] = { "Aufnahme", u8"Säubern", "Kontrolle", "Ton", "Mix" };
 
+    // Was misst NONIUS, und womit beeinflusst man es? (Info-Menü "Messgrößen erklärt", Tooltips der Meter)
+    struct GlossaryEntry { const char* key; const char* meaning; const char* tools; };
+    const GlossaryEntry kGlossary[] = {
+        { "Klangbild",              "Energie pro Oktave im Vergleich zu den Referenzen (0 = Median).", "EQ (Pro-Q, EQ Eight): breite Glocken, Shelves" },
+        { "Spektrale Neigung",      "Wie hell oder dunkel insgesamt (dB/Okt., negativer = dunkler).", "High-/Low-Shelf; Sättigung oder Exciter für mehr Höhen" },
+        { "Silben-Dynamik",         "Abstand laute zu leise Silben. Klein = stark komprimiert.", "Kompressor (Gain Reduction, Attack), Clip-Gain" },
+        { "Lautstärke-Schwankung",  "Schwankung über Sekunden, z. B. zwischen Zeilen.", "Langsamer Kompressor, Volume-Automation, Clip-Gain" },
+        { "Crest",                  "Spitzen gegenüber dem Durchschnitt (100 ms bzw. 1 s). Klein = platt.", "Schneller Kompressor, Limiter oder Clipper senken ihn" },
+        { "Wortspitzen",            "Einzelne Wörter, die deutlich herausspringen.", "Clip-Gain oder schneller Limiter vor dem Kompressor" },
+        { "Zischlaute",             "S-Laute im Verhältnis zu den Vokalen.", "De-Esser (Pro-DS u. a.), notfalls schmaler EQ-Cut" },
+        { "Abstand Wort zu Lücke",  "Wie leer die Lücken zwischen Wörtern sind. Klein = gefüllt.", "Hall/Delay füllen die Lücken, Gate/Expander leeren sie" },
+        { "Breite",                 "Seitensignal im Verhältnis zur Mitte (Stereo-Breite).", "Doubles/Adlibs panen, Stereo-Effekte, Utility Width" },
+        { "Bass-Seite",             "Bass unter 120 Hz in Stereo. Sollte fast mono sein.", "Utility: Bass Mono" },
+        { "Bass unter 250 Hz",      "Anteil Bass am Gesamtklang.", "EQ Low-Shelf, Pegel von Kick/808" },
+        { u8"Höhen über 8 kHz",     "Anteil Höhen am Gesamtklang.", "EQ High-Shelf, Exciter; zu viel: De-Esser/Shelf runter" },
+        { "Rumpeln",                "Energie unter 80 Hz bei der Stimme (Trittschall, Brummen, Wind).", "Low Cut 80–100 Hz" },
+        { "Rauschen",               "Grundrauschen in den Pausen (A-bewertet).", "Aufnahme: Gain/Mikro. Mix: Gate, Expander, Entrauscher" },
+        { "Raumhall",               "Wie viel Raum in der Aufnahme ist (experimentell).", "Aufnahme: Absorber, näher ans Mikro. Mix: De-Reverb" },
+        { "Popps",                  "Plosive (P, B), die tief einschlagen.", "Popschutz; im Mix Low Cut und Clip-Gain" },
+        { "Clipping",               "Übersteuerte Stellen in der Aufnahme.", "Interface-Gain runter; Declipper" },
+        { "Peaks",                  "Spitzenpegel beim Aufnehmen.", "Gain am Interface, Ziel −10 bis −6 dBFS" },
+        { "True Peak",              "Echte Spitzen zwischen den Samples.", "Limiter mit Ceiling −1 dBTP" },
+        { "Lautheit",               "Gesamtlautheit in LUFS (nur auf der Summe sinnvoll).", "Limiter / Mastering" },
+        { "Resonanz",               "Einzelne Frequenz, die ständig hervorsticht.", "Schmaler EQ-Cut (Q 4–8) oder dynamischer EQ / Soothe" },
+    };
+
+    const GlossaryEntry* glossaryFor (const juce::String& label)
+    {
+        for (const auto& e : kGlossary)
+            if (label.startsWith (juce::String::fromUTF8 (e.key))) return &e;
+        return nullptr;
+    }
+
     bool isIssue (const nonius::Finding& f)
     {
         return f.severity == nonius::Severity::problem || f.severity == nonius::Severity::warning;
@@ -245,6 +278,7 @@ void NoniusEditor::rebuildLists()
 void NoniusEditor::mouseUp (const juce::MouseEvent& e)
 {
     const auto p = e.getPosition();
+    if (showGlossary) { showGlossary = false; repaint(); return; } // Klick irgendwo schließt die Übersicht
     if (logoRect.contains (p)) { showInfoMenu(); return; }
     for (int i = 0; i < 5; ++i)
         if (stageRects[i].contains (p))
@@ -281,15 +315,62 @@ void NoniusEditor::showInfoMenu()
     m.addItem (3, voc.empty() ? u8 ("Vocal-Profil: keins geladen")
                               : u8 ("Vocal-Profil: ") + juce::String (voc.songs) + " Referenz-Vocals", false);
     m.addSeparator();
+    m.addItem (5, u8 ("Messgrößen erklärt"));
     m.addItem (4, u8 ("Ordner für eigene Profile öffnen (Dokumente/Nonius)"));
     m.showMenuAsync (juce::PopupMenu::Options().withTargetScreenArea (localAreaToGlobal (logoRect)),
-                     [] (int result)
+                     [safe = juce::Component::SafePointer<NoniusEditor> (this)] (int result)
                      {
+                         if (result == 5 && safe != nullptr) { safe->showGlossary = true; safe->repaint(); return; }
                          if (result != 4) return;
                          auto dir = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Nonius");
                          dir.createDirectory();
                          dir.startAsProcess();
                      });
+}
+
+void NoniusEditor::paintGlossary (juce::Graphics& g, juce::Rectangle<int> area)
+{
+    g.setColour (C::panel);
+    g.fillRoundedRectangle (area.toFloat(), 6.0f);
+    g.setColour (C::range);
+    g.drawRoundedRectangle (area.toFloat().reduced (0.5f), 6.0f, 1.0f);
+
+    auto body = area.reduced (20, 14);
+    auto title = body.removeFromTop (22);
+    g.setColour (C::dim);
+    g.setFont (caps (11.0f));
+    g.drawText (u8 ("MESSGRÖSSEN ERKLÄRT"), title, juce::Justification::centredLeft);
+    g.setFont (sans (12.0f));
+    g.drawText (u8 ("Klick irgendwo schließt"), title, juce::Justification::centredRight);
+    body.removeFromTop (6);
+
+    const int n = (int) std::size (kGlossary), perCol = (n + 1) / 2;
+    const int colW = (body.getWidth() - 24) / 2, rowH = body.getHeight() / perCol;
+    for (int i = 0; i < n; ++i)
+    {
+        const auto& e = kGlossary[i];
+        const juce::Rectangle<int> r (body.getX() + (i / perCol) * (colW + 24), body.getY() + (i % perCol) * rowH, colW, rowH);
+        g.setColour (C::text);
+        g.setFont (sans (13.0f, true));
+        g.drawText (u8 (e.key), r.getX(), r.getY(), 160, 16, juce::Justification::topLeft, true);
+        g.setColour (C::muted);
+        g.setFont (sans (12.0f));
+        g.drawFittedText (u8 (e.meaning), r.getX() + 162, r.getY(), colW - 162, 16, juce::Justification::topLeft, 1, 0.9f);
+        g.setColour (C::accent);
+        g.setFont (sans (12.0f));
+        g.drawFittedText (u8 ("→ ") + u8 (e.tools), r.getX() + 162, r.getY() + 16, colW - 162, 16, juce::Justification::topLeft, 1, 0.9f);
+    }
+}
+
+juce::String NoniusEditor::getTooltip()
+{
+    const auto p = getMouseXYRelative();
+    if (logoRect.contains (p)) return u8 ("Version, Profile, Messgrößen erklärt");
+    for (const auto& [r, label] : meterRows)
+        if (r.contains (p))
+            if (const auto* e = glossaryFor (label))
+                return u8 (e->meaning) + "\n" + u8 ("→ ") + u8 (e->tools);
+    return {};
 }
 
 void NoniusEditor::mouseMove (const juce::MouseEvent& e)
@@ -302,11 +383,22 @@ void NoniusEditor::mouseMove (const juce::MouseEvent& e)
 // ====================================================================== Zeichnen
 void NoniusEditor::paint (juce::Graphics& g)
 {
-    g.fillAll (C::bg);
-    paintHeader (g);
-    paintSpectrum (g, spectrumArea);
-    paintFindings (g, findingsArea);
-    paintMeters (g, metersArea);
+    // Der Timer zeichnet 25-mal pro Sekunde nur das Klangbild neu: die anderen Bereiche
+    // (Textlayout, Meter) nur, wenn sie wirklich im Neuzeichnen-Bereich liegen.
+    if (g.clipRegionIntersects (headerArea))   { g.setColour (C::bg); g.fillRect (headerArea); paintHeader (g); }
+    if (g.clipRegionIntersects (spectrumArea)) paintSpectrum (g, spectrumArea);
+    if (g.clipRegionIntersects (findingsArea)) paintFindings (g, findingsArea);
+    if (g.clipRegionIntersects (metersArea))   paintMeters (g, metersArea);
+    if (g.clipRegionIntersects (getLocalBounds().withTrimmedTop (headerArea.getBottom())))
+    {
+        // Ränder zwischen den Feldern
+        juce::RectangleList<int> gaps (getLocalBounds().withTrimmedTop (headerArea.getBottom()));
+        gaps.subtract (spectrumArea); gaps.subtract (findingsArea); gaps.subtract (metersArea);
+        g.setColour (C::bg);
+        g.fillRectList (gaps);
+    }
+    if (showGlossary) paintGlossary (g, getLocalBounds().withTrimmedTop (headerArea.getBottom()).reduced (16, 12));
+
 }
 
 void NoniusEditor::paintHeader (juce::Graphics& g)
@@ -769,6 +861,7 @@ void NoniusEditor::paintMeters (juce::Graphics& g, juce::Rectangle<int> area)
 
     auto body = area.reduced (16, 0).withTrimmedTop (38);
     const auto meters = buildMeters();
+    meterRows.clear();
     if (meters.empty())
     {
         g.setFont (sans (13.0f));
@@ -779,6 +872,7 @@ void NoniusEditor::paintMeters (juce::Graphics& g, juce::Rectangle<int> area)
     for (const auto& mt : meters)
     {
         auto row = body.removeFromTop (33);
+        meterRows.emplace_back (row, mt.label);
         g.setColour (C::muted);
         g.setFont (sans (12.5f));
         g.drawText (mt.hasTarget ? mt.label : mt.label + u8 ("  (Ziel folgt)"), row.getX(), row.getY(), row.getWidth() - 100, 16, juce::Justification::centredLeft, true);

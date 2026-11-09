@@ -168,23 +168,28 @@ namespace nonius
             scratch[i] = v / (float) history.size();
         }
 
+        // Bänder wie im Profil der aktuellen Rolle (Vocal-Profil hat weniger Oktaven), damit der Live-Strich passt
+        const auto& rp = profileFor (getRole());
+        const auto& cs = rp.octaveCentres.empty() ? centres : rp.octaveCentres;
+        if (smoothedPower.size() != cs.size()) smoothedPower.assign (cs.size(), 0.0);
+
         const auto spec = powerSpectrum (scratch.data(), kSpectrumSize, window);
         const double binHz = sr / (double) kSpectrumSize;
         double total = 0;
-        std::vector<double> bands (centres.size(), 0.0);
+        std::vector<double> bands (cs.size(), 0.0);
         for (std::size_t b = 1; b < spec.size(); ++b)
         {
             const double f = (double) b * binHz;
             if (f < 20.0 || f > 20000.0) continue;
             total += spec[b];
-            for (std::size_t i = 0; i < centres.size(); ++i)
-                if (f >= centres[i] / std::sqrt (2.0) && f < centres[i] * std::sqrt (2.0)) { bands[i] += spec[b]; break; }
+            for (std::size_t i = 0; i < cs.size(); ++i)
+                if (f >= cs[i] / std::sqrt (2.0) && f < cs[i] * std::sqrt (2.0)) { bands[i] += spec[b]; break; }
         }
         if (total <= 1e-20) return; // Stille: Anzeige stehen lassen
 
         // Glättung ca. 0,4 s
-        std::vector<double> out (centres.size());
-        for (std::size_t i = 0; i < centres.size(); ++i)
+        std::vector<double> out (cs.size());
+        for (std::size_t i = 0; i < cs.size(); ++i)
         {
             const double rel = bands[i] / total;
             smoothedPower[i] = smoothedPower[i] <= 0 ? rel : smoothedPower[i] + 0.12 * (rel - smoothedPower[i]);
