@@ -245,6 +245,7 @@ void NoniusEditor::rebuildLists()
 void NoniusEditor::mouseUp (const juce::MouseEvent& e)
 {
     const auto p = e.getPosition();
+    if (logoRect.contains (p)) { showInfoMenu(); return; }
     for (int i = 0; i < 5; ++i)
         if (stageRects[i].contains (p))
         {
@@ -261,9 +262,39 @@ void NoniusEditor::mouseUp (const juce::MouseEvent& e)
     }
 }
 
+void NoniusEditor::showInfoMenu()
+{
+   #ifndef NONIUS_VERSION_STRING
+    #define NONIUS_VERSION_STRING "?"
+   #endif
+   #ifndef NONIUS_GIT_COMMIT
+    #define NONIUS_GIT_COMMIT "?"
+   #endif
+    const auto& mixProf = proc.analyser().profile();
+    const auto& voc = proc.analyser().vocalProfile();
+
+    juce::PopupMenu m;
+    m.addSectionHeader (u8 ("NONIUS ") + NONIUS_VERSION_STRING);
+    m.addItem (1, u8 ("Build ") + NONIUS_GIT_COMMIT + u8 ("  ·  ") + juce::String (__DATE__), false);
+    m.addSeparator();
+    m.addItem (2, u8 ("Mix-Profil: ") + juce::String (mixProf.songs) + " Referenz-Songs", false);
+    m.addItem (3, voc.empty() ? u8 ("Vocal-Profil: keins geladen")
+                              : u8 ("Vocal-Profil: ") + juce::String (voc.songs) + " Referenz-Vocals", false);
+    m.addSeparator();
+    m.addItem (4, u8 ("Ordner für eigene Profile öffnen (Dokumente/Nonius)"));
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetScreenArea (localAreaToGlobal (logoRect)),
+                     [] (int result)
+                     {
+                         if (result != 4) return;
+                         auto dir = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Nonius");
+                         dir.createDirectory();
+                         dir.startAsProcess();
+                     });
+}
+
 void NoniusEditor::mouseMove (const juce::MouseEvent& e)
 {
-    bool clickable = moreRect.contains (e.getPosition());
+    bool clickable = moreRect.contains (e.getPosition()) || logoRect.contains (e.getPosition());
     for (auto& r : stageRects) clickable = clickable || r.contains (e.getPosition());
     setMouseCursor (clickable ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
 }

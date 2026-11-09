@@ -4,6 +4,7 @@ juce_add_plugin(Nonius
     PLUGIN_MANUFACTURER_CODE Mcqz
     PLUGIN_CODE Nns1
     PRODUCT_NAME "Nonius"
+    VERSION ${PROJECT_VERSION}
     FORMATS VST3
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT FALSE
@@ -38,6 +39,17 @@ target_compile_definitions(Nonius PUBLIC
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
     JUCE_DISPLAY_SPLASH_SCREEN=0)
+
+# Build-Kennung (Git-Commit) fürs Info-Menü, damit klar ist, welche Version geladen ist
+execute_process(COMMAND git rev-parse --short HEAD
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    OUTPUT_VARIABLE NONIUS_GIT_COMMIT OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+if(NOT NONIUS_GIT_COMMIT)
+    set(NONIUS_GIT_COMMIT "unbekannt")
+endif()
+target_compile_definitions(NoniusData INTERFACE
+    NONIUS_VERSION_STRING="${PROJECT_VERSION}"
+    NONIUS_GIT_COMMIT="${NONIUS_GIT_COMMIT}")
 
 if(MSVC)
     target_compile_options(Nonius PRIVATE /utf-8)

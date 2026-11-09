@@ -59,7 +59,8 @@ private:
     juce::String shownTrackName;
 
     juce::Rectangle<int> headerArea, spectrumArea, findingsArea, metersArea;
-    juce::Rectangle<int> stageRects[5], moreRect;
+    juce::Rectangle<int> stageRects[5], moreRect, logoRect { 10, 6, 130, 36 };
+    void showInfoMenu();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NoniusEditor)
 };
