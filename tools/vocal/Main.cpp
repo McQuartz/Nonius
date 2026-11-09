@@ -78,6 +78,25 @@ namespace
         return lv.empty() ? -60.0 : percentile (lv, 90);
     }
 
+    ReferenceProfile loadProfile (const juce::File& f)
+    {
+        ReferenceProfile p;
+        const auto root = juce::JSON::parse (f.loadFileAsString());
+        auto toRange = [] (const juce::var& v, int off)
+        {
+            Range r;
+            if (auto* a = v.getArray(); a != nullptr && a->size() >= off + 3)
+            { r.p10 = (*a)[off]; r.p50 = (*a)[off + 1]; r.p90 = (*a)[off + 2]; r.valid = r.p90 >= r.p10; }
+            return r;
+        };
+        if (auto* obj = root["bereiche"].getDynamicObject())
+            for (const auto& nv : obj->getProperties()) p.ranges[nv.name.toString().toStdString()] = toRange (nv.value, 0);
+        if (auto* oct = root["oktaven"].getArray())
+            for (const auto& row : *oct) { p.octaveCentres.push_back ((double) row[0]); p.octaves.push_back (toRange (row, 1)); }
+        p.songs = (int) root["songs"];
+        return p;
+    }
+
     juce::var arr (const std::vector<double>& v)
     {
         juce::Array<juce::var> a;
@@ -136,6 +155,15 @@ int main (int argc, char* argv[])
     o->setProperty ("kompressionAngewandt", appliedGr);
     o->setProperty ("lufs", t.loudness.integratedLufs);
     o->setProperty ("lra", t.loudness.lra);
+    {
+        // Wort-/Zeilen-Dynamik: Momentary-Lautheit (400 ms) in aktiven Teilen (innerhalb 20 LU unter dem Maximum)
+        std::vector<double> mom;
+        const auto& m = t.loudness.momentary;
+        double mx = -150; for (double x : m) mx = std::max (mx, x);
+        for (double x : m) if (x > mx - 20.0) mom.push_back (x);
+        o->setProperty ("wort90_10", mom.size() > 20 ? percentile (mom, 90) - percentile (mom, 10) : 0.0);
+        o->setProperty ("wort95_50", mom.size() > 20 ? percentile (mom, 95) - percentile (mom, 50) : 0.0);
+    }
     o->setProperty ("streuung", t.loudness.shortTermP90 - t.loudness.shortTermP10);
     o->setProperty ("crest100", t.crest100msDb);
     const auto vd = measureVocalDynamics (v);
@@ -182,6 +210,24 @@ int main (int argc, char* argv[])
             o->setProperty ("verdeckt", masked);
         }
         else std::fprintf (stderr, "Beat nicht lesbar oder andere Samplerate\n");
+    }
+
+    if (args.count ("profil"))
+    {
+        // Befunde gegen das Vocal-Profil (wie im Plugin), --roh 1 = Rohaufnahme
+        const auto prof = loadProfile (juce::File (args["profil"]));
+        const bool raw = args.count ("roh") && args["roh"].getIntValue() != 0;
+        juce::Array<juce::var> fs;
+        for (const auto& f : evaluateVocalWithProfile (t, vd, sideToMidDb (v), prof, raw))
+        {
+            juce::DynamicObject::Ptr x = new juce::DynamicObject();
+            x->setProperty ("id", juce::String (f.id)); x->setProperty ("titel", juce::String::fromUTF8 (f.title.c_str()));
+            x->setProperty ("stufe", juce::String (severityLabel (f.severity)));
+            x->setProperty ("text", juce::String::fromUTF8 (f.text.c_str())); x->setProperty ("fix", juce::String::fromUTF8 (f.fix.c_str()));
+            x->setProperty ("wert", juce::String::fromUTF8 (f.measured.c_str()));
+            fs.add (juce::var (x.get()));
+        }
+        o->setProperty ("befunde", fs);
     }
 
     const auto json = juce::JSON::toString (juce::var (o.get()), true);

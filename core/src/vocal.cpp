@@ -241,7 +241,7 @@ namespace nonius
         auto base = evaluateVocal (t, raw);
         if (p.empty()) return base;
         auto extra = evaluateVocalAgainstProfile (t, d, sideToMid, p, raw);
-        const auto replaced = [] (const std::string& id) { return id == "K01" || id == "K02" || id == "T01" || id == "T06" || id == "T07"; };
+        const auto replaced = [] (const std::string& id) { return id == "K01" || id == "K02" || id == "T01" || id == "T06" || id == "T07" || id == "S02" || id == "T08"; };
         base.erase (std::remove_if (base.begin(), base.end(), [&] (const Finding& f) { return replaced (f.id); }), base.end());
         // S01 aus dem Profil nur, wenn der feste Rumpel-Check nicht schon anschlägt
         const bool rumbleFlagged = std::any_of (base.begin(), base.end(), [] (const Finding& f) { return f.id == "S01" && f.severity != Severity::ok; });

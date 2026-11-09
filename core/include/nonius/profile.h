@@ -59,7 +59,7 @@ namespace nonius
                                                       double sideToMid, const ReferenceProfile& vocalProfile, bool isRaw);
 
     // evaluateVocal + evaluateVocalAgainstProfile zusammengeführt: Mit Profil ersetzen die Profil-Befunde
-    // die Startwert-Checks K01, K02, T01, T06, T07 (ohne Profil bleibt evaluateVocal unverändert).
+    // die Startwert-Checks K01, K02, T01, T06, T07, S02, T08 (ohne Profil bleibt evaluateVocal unverändert).
     std::vector<Finding> evaluateVocalWithProfile (const TrackAnalysis& t, const VocalDynamics& d,
                                                    double sideToMid, const ReferenceProfile& vocalProfile, bool isRaw);
 

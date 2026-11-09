@@ -6,12 +6,13 @@ und "Vocal roh" bauen.
 Schritte (einzeln aufrufbar):
   trennen  --ordner REFERENZEN --stems STEMS        (htdemucs, --two-stems=vocals)
   messen   --stems STEMS --tool nonius-vocal --werte werte.jsonl
+  pruefen  --echt echt.jsonl --getrennt getrennt.jsonl --out pruefung.json   (MUSDB18)
   profil   --werte werte.jsonl --favoriten "a;b" --nur-vergleich "c" --profil vocal-profil.json
            [--korrektur korrektur.json]
 
 Favoriten zählen doppelt (wie tools/reference), "nur Vergleich" wird gemessen, aber nicht ins
 Profil gerechnet. --korrektur: systematische Fehler der Stem-Trennung (aus der MUSDB18-Prüfung),
-werden vor den Perzentilen abgezogen.
+werden vor den Perzentilen abgezogen (tools/vocal/daten/korrektur.json).
 """
 import argparse
 import json
@@ -27,6 +28,7 @@ CENTRES = [31.5, 62.5, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
 FIELDS = [
     ("silbe90_30", "Silben-Dynamik", "dB"),
     ("silbe95_50", "Silben-Spitzen", "dB"),
+    ("wort95_50", "Wort-Spitzen", "LU"),
     ("streuung", "Lautstärke-Schwankung", "LU"),
     ("crest100", "Crest 100 ms", "dB"),
     ("crest1s", "Crest 1 s", "dB"),
@@ -119,9 +121,11 @@ def apply_correction(rows, corr):
 
 def cmd_profil(a):
     rows = load_rows(a.werte, a.favoriten, a.nur_vergleich)
+    corr = {}
     if a.korrektur:
         with open(a.korrektur, encoding="utf-8") as f:
-            apply_correction(rows, json.load(f))
+            corr = json.load(f)
+        apply_correction(rows, corr)
     prof = [r for r in rows if r["gewicht"] > 0]
     ranges = {}
     for key, label, unit in FIELDS:
@@ -129,7 +133,10 @@ def cmd_profil(a):
         if len(vals) >= 5:
             ranges[label] = [round(percentile(vals, p), 2) for p in (10, 50, 90)]
     octs = []
+    min_hz = corr.get("oktaven_ab_hz", 0) if a.korrektur else 0
     for i, c in enumerate(CENTRES):
+        if c < min_hz:
+            continue  # Stem-Trennung dort unzuverlässig (MUSDB18-Prüfung)
         vals = weighted(prof, "oktaven", i)
         octs.append([c] + [round(percentile(vals, p), 2) for p in (10, 50, 90)])
     result = {
@@ -140,10 +147,34 @@ def cmd_profil(a):
         "bereiche": ranges,
         "oktaven": octs,
         "einheiten": {label: unit for _, label, unit in FIELDS},
+        "korrektur": corr,
     }
     with open(a.profil, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=1)
     print(json.dumps(result, ensure_ascii=False, indent=1))
+
+
+def cmd_pruefen(a):
+    """MUSDB18: echte Vocal-Stems gegen HTDemucs-Stems derselben Ausschnitte. Ergibt den
+    systematischen Fehler (Median) und die Streuung pro Messwert."""
+    def rd(p):
+        return {json.loads(l)["name"]: json.loads(l) for l in open(p, encoding="utf-8") if l.strip()}
+    true, sep = rd(a.echt), rd(a.getrennt)
+    names = [n for n in true if n in sep and true[n].get("vocalZuBeat", -99) > -3]
+    res = {"songs": len(names), "felder": {}, "oktaven": []}
+    for key, label, unit in FIELDS:
+        d = [sep[n][key] - true[n][key] for n in names
+             if isinstance(true[n].get(key), (int, float)) and true[n][key] > -140 and sep[n].get(key, -150) > -140]
+        if d:
+            res["felder"][key] = {"label": label, "median": round(percentile(d, 50), 2),
+                                  "p10": round(percentile(d, 10), 2), "p90": round(percentile(d, 90), 2), "n": len(d)}
+    for i, c in enumerate(CENTRES):
+        d = [sep[n]["oktaven"][i] - true[n]["oktaven"][i] for n in names]
+        res["oktaven"].append({"hz": c, "median": round(percentile(d, 50), 2),
+                               "p10": round(percentile(d, 10), 2), "p90": round(percentile(d, 90), 2)})
+    with open(a.out, "w", encoding="utf-8") as f:
+        json.dump(res, f, ensure_ascii=False, indent=1)
+    print(json.dumps(res, ensure_ascii=False, indent=1))
 
 
 def main():
@@ -164,8 +195,12 @@ def main():
     p.add_argument("--nur-vergleich", dest="nur_vergleich", default="")
     p.add_argument("--profil", required=True)
     p.add_argument("--korrektur", default="")
+    q = sub.add_parser("pruefen")
+    q.add_argument("--echt", required=True)
+    q.add_argument("--getrennt", required=True)
+    q.add_argument("--out", required=True)
     a = ap.parse_args()
-    {"trennen": cmd_trennen, "messen": cmd_messen, "profil": cmd_profil}[a.cmd](a)
+    {"trennen": cmd_trennen, "messen": cmd_messen, "profil": cmd_profil, "pruefen": cmd_pruefen}[a.cmd](a)
 
 
 if __name__ == "__main__":
