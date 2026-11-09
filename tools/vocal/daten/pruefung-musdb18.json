@@ -1,0 +1,179 @@
+{
+ "songs": 14,
+ "felder": {
+  "silbe90_30": {
+   "label": "Silben-Dynamik",
+   "median": 0.05,
+   "p10": -0.23,
+   "p90": 0.42,
+   "n": 14
+  },
+  "silbe95_50": {
+   "label": "Silben-Spitzen",
+   "median": 0.06,
+   "p10": -0.2,
+   "p90": 0.24,
+   "n": 14
+  },
+  "wort95_50": {
+   "label": "Wort-Spitzen",
+   "median": 0.11,
+   "p10": -0.11,
+   "p90": 0.18,
+   "n": 14
+  },
+  "streuung": {
+   "label": "Lautstärke-Schwankung",
+   "median": 0.11,
+   "p10": -0.32,
+   "p90": 0.54,
+   "n": 14
+  },
+  "crest100": {
+   "label": "Crest 100 ms",
+   "median": -0.06,
+   "p10": -0.18,
+   "p90": 0.01,
+   "n": 14
+  },
+  "crest1s": {
+   "label": "Crest 1 s",
+   "median": 0.07,
+   "p10": -0.24,
+   "p90": 0.32,
+   "n": 14
+  },
+  "zischS": {
+   "label": "Zischlaute (S zu Vokal)",
+   "median": -0.03,
+   "p10": -0.85,
+   "p90": 0.57,
+   "n": 14
+  },
+  "luecke": {
+   "label": "Abstand Wort zu Lücke",
+   "median": 5.47,
+   "p10": 1.8,
+   "p90": 17.57,
+   "n": 14
+  },
+  "raumNachklang": {
+   "label": "Nachklang nach Wortende",
+   "median": -2.22,
+   "p10": -3.89,
+   "p90": -0.36,
+   "n": 13
+  },
+  "neigung": {
+   "label": "Spektrale Neigung",
+   "median": -0.06,
+   "p10": -0.17,
+   "p90": 0.22,
+   "n": 14
+  },
+  "tief": {
+   "label": "Bass < 250 Hz",
+   "median": -0.24,
+   "p10": -2.64,
+   "p90": -0.0,
+   "n": 14
+  },
+  "tiefeMitten": {
+   "label": "Tiefe Mitten 250 Hz–2 kHz",
+   "median": 0.05,
+   "p10": -0.0,
+   "p90": 0.1,
+   "n": 14
+  },
+  "hoheMitten": {
+   "label": "Hohe Mitten 2–8 kHz",
+   "median": -0.14,
+   "p10": -0.75,
+   "p90": 0.1,
+   "n": 14
+  },
+  "hoehen": {
+   "label": "Höhen > 8 kHz",
+   "median": -0.09,
+   "p10": -0.84,
+   "p90": 0.25,
+   "n": 14
+  },
+  "breite": {
+   "label": "Breite (Seite zu Mitte)",
+   "median": -0.38,
+   "p10": -0.95,
+   "p90": 0.02,
+   "n": 13
+  },
+  "vocalZuBeat": {
+   "label": "Vocal über Beat",
+   "median": 0.44,
+   "p10": -0.03,
+   "p90": 0.98,
+   "n": 14
+  }
+ },
+ "oktaven": [
+  {
+   "hz": 31.5,
+   "median": -5.74,
+   "p10": -10.71,
+   "p90": 2.21
+  },
+  {
+   "hz": 62.5,
+   "median": -4.58,
+   "p10": -10.84,
+   "p90": 1.76
+  },
+  {
+   "hz": 125,
+   "median": -0.53,
+   "p10": -1.47,
+   "p90": 0.12
+  },
+  {
+   "hz": 250,
+   "median": -0.25,
+   "p10": -1.04,
+   "p90": 0.09
+  },
+  {
+   "hz": 500,
+   "median": 0.03,
+   "p10": -0.26,
+   "p90": 0.15
+  },
+  {
+   "hz": 1000,
+   "median": 0.12,
+   "p10": -0.02,
+   "p90": 0.31
+  },
+  {
+   "hz": 2000,
+   "median": 0.01,
+   "p10": -0.42,
+   "p90": 0.19
+  },
+  {
+   "hz": 4000,
+   "median": -0.21,
+   "p10": -0.84,
+   "p90": 0.08
+  },
+  {
+   "hz": 8000,
+   "median": -0.21,
+   "p10": -0.95,
+   "p90": 0.3
+  },
+  {
+   "hz": 16000,
+   "median": -0.14,
+   "p10": -0.94,
+   "p90": 0.22
+  }
+ ]
+}

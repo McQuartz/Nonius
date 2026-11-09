@@ -4,7 +4,9 @@ add_library(nonius_core STATIC
     src/loudness.cpp
     src/track.cpp
     src/mix.cpp
-    src/evaluate.cpp)
+    src/evaluate.cpp
+    src/profile.cpp
+    src/vocal.cpp)
 target_include_directories(nonius_core PUBLIC include)
 target_compile_features(nonius_core PUBLIC cxx_std_17)
 if(MSVC)

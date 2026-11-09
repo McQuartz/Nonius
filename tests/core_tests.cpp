@@ -1,5 +1,6 @@
 // Mess-Kern gegen synthetische Signale mit bekanntem Ergebnis prüfen.
 #include "nonius/analysis.h"
+#include "nonius/profile.h"
 
 #include <algorithm>
 #include <cmath>
@@ -131,6 +132,39 @@ int main()
         auto t = analyseTrack (a, "phase", Role::beat);
         near ("Korrelation gegenphasig", t.correlation, -1.0, 0.01);
         check (t.monoLossMaxDb > 20.0, "Mono-Verlust gegenphasig > 20 dB", t.monoLossMaxDb, 20.0);
+    }
+
+
+    // --- Vocal-Dynamik: "Silben" mit abwechselnd 0 / −8 dB, Pausen dazwischen
+    {
+        const double sr = 44100;
+        AudioBuffer a; a.sampleRate = sr;
+        std::vector<float> x ((std::size_t) (sr * 20), 0.0f);
+        for (int k = 0; k < 80; ++k)
+        {
+            const double amp = (k % 2 == 0) ? 0.3 : 0.3 * std::pow (10.0, -8.0 / 20.0);
+            const std::size_t s0 = (std::size_t) (k * 0.25 * sr), len = (std::size_t) (0.12 * sr);
+            for (std::size_t i = 0; i < len && s0 + i < x.size(); ++i)
+                x[s0 + i] = (float) (amp * std::sin (2.0 * kPi * 300.0 * (double) i / sr));
+        }
+        for (std::size_t i = 0; i < x.size(); ++i) x[i] += (float) (0.003 * std::sin (2.0 * kPi * 5000.0 * (double) i / sr)); // "Raum" −40 dB
+        a.channels = { x };
+        const auto d = measureVocalDynamics (a);
+        near ("Silben-Dynamik 8 dB", d.syllableDb, 8.0, 0.6);
+        near ("Lücke = Abstand Silbe zu Raum (ca. 40 dB)", d.gapDepthDb, 40.0, 3.0);
+
+        // Profil: Ziel 4 dB Silben-Dynamik -> Rohspur bekommt K01 mit Gain Reduction
+        ReferenceProfile p; p.songs = 10;
+        p.ranges["Silben-Dynamik"] = { 3.0, 4.0, 5.5, true };
+        auto t = analyseTrack (a, "v", Role::leadVocal);
+        const auto f = evaluateVocalAgainstProfile (t, d, -150.0, p, true);
+        bool k01 = false;
+        for (const auto& x2 : f) if (x2.id == "K01" && x2.severity == Severity::warning && x2.fix.find ("Gain Reduction") != std::string::npos) k01 = true;
+        check (k01, "Rohspur: K01 schlägt Kompression vor", k01 ? 1 : 0, 1);
+        const auto g = evaluateVocalAgainstProfile (t, d, -150.0, p, false);
+        bool k01w = false;
+        for (const auto& x2 : g) if (x2.id == "K01" && x2.severity != Severity::ok) k01w = true;
+        check (k01w, "Bearbeitet: 8 dB > P90 -> zu wenig Kompression", k01w ? 1 : 0, 1);
     }
 
     std::printf ("\n%s (%d Fehler)\n", failures == 0 ? "Alle Tests bestanden" : "TESTS FEHLGESCHLAGEN", failures);

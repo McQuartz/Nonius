@@ -136,9 +136,12 @@ namespace nonius
 
             // A05 Brummen
             if (t.humExcessDb >= 10.0)
+            {
                 out.push_back (make ("A05", "Brummen", Severity::warning, fmt ("Brummen bei %.0f Hz", t.humFrequency),
                                      fmt2 ("Notch-Filter %.0f/%.0f Hz (+ 3. Oberton), Kabel/Erdung prüfen", t.humFrequency, 2 * t.humFrequency),
                                      fmt ("%.0f dB über Nachbarn", t.humExcessDb), 4.0));
+                out.back().frequency = t.humFrequency;
+            }
 
             // A06 Raumhall (experimentell). Grenzwerte auf dem Rohwert, kalibriert mit simulierten
             // Räumen und Mikro 15–30 cm: Kabine ≈ 0,25 s, Zimmer 0,3–0,4 s, hallig ≥ 0,4 s.
@@ -189,6 +192,7 @@ namespace nonius
             out.push_back (make ("S01", "Rumpeln", s, fmt ("Energie unter 80 Hz: %.0f dB relativ zur Stimme", t.rumbleDb),
                                  s == Severity::ok ? "" : "Low Cut bei 80–100 Hz, 12–18 dB/Okt.",
                                  fmt ("%.1f dB", t.rumbleDb), std::max (0.0, excess) * 0.4, "Startziel −28 dB, wird kalibriert"));
+            out.back().frequency = 50.0;
         }
 
         // S03 Resonanzen
@@ -201,6 +205,7 @@ namespace nonius
                                  fmt ("Schmaler Cut −%.1f dB bei ", roundHalf (r.heightDb - 2.0)) + hz (r.frequency) + ", Q 4–8",
                                  fmt2 ("+%.1f dB, %.0f %% der Zeit", r.heightDb, r.persistence * 100.0),
                                  r.heightDb * earWeight (r.frequency)));
+            out.back().frequency = r.frequency;
         }
 
         // S02/S04 brauchen Zielkurven
@@ -258,6 +263,7 @@ namespace nonius
             out.push_back (make (t.sibilantToVowelDb < -14.0 ? "T07" : "T06", "Zischlaute", s, text, fix,
                                  fmt ("%.1f dB, ", t.sibilantToVowelDb) + std::to_string (t.sibilants.count) + " S-Laute, Schwerpunkt " + hz (t.sibilantFrequency),
                                  std::max (0.0, t.sibilantToVowelDb + 1.0), "Startwerte, werden kalibriert"));
+            out.back().frequency = t.sibilantFrequency;
         }
         else
             out.push_back (make ("T06", "Zischlaute", Severity::noData, "Zu wenige S-Laute oder Vokale erkannt", "", "–"));
@@ -297,6 +303,7 @@ namespace nonius
             out.push_back (make ("M10", "Mono-Verlust", s2, "Größter Verlust in Mono bei " + hz (t.monoLossFrequency),
                                  s2 == Severity::ok ? "" : "Stereo-Verbreiterung/Phase in diesem Bereich prüfen",
                                  fmt ("%.1f dB", t.monoLossMaxDb), std::max (0.0, t.monoLossMaxDb - 3.0)));
+            if (s2 != Severity::ok) out.back().frequency = t.monoLossFrequency;
         }
         out.push_back (make ("INFO", "Lautheit Beat", Severity::info, fmt ("%.1f LUFS integriert", t.loudness.integratedLufs), "",
                              fmt2 ("%.1f LUFS, LRA %.1f LU", t.loudness.integratedLufs, t.loudness.lra)));
@@ -334,6 +341,7 @@ namespace nonius
                                  fmt ("Beat: dynamischer EQ −%.1f dB bei ", std::clamp (roundHalf (r.neededDb), 1.0, 6.0)) + hz (fc) + ", per Sidechain vom Vocal ausgelöst",
                                  fmt ("%.0f %% der Zeit verdeckt", r.maskedFraction * 100.0) + fmt (", typisch %.1f dB unter der Schwelle", r.neededDb),
                                  r.maskedFraction * 10.0 * earWeight (fc), "vereinfachtes Hörmodell, wird kalibriert"));
+            out.back().frequency = fc;
         }
 
         if (m.sumTruePeakDb > -149.0)

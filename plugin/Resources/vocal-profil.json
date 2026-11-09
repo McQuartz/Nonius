@@ -1,0 +1,165 @@
+{
+ "version": 1,
+ "rolle": "Vocal bearbeitet",
+ "quelle": "HTDemucs-Stems der Referenz-Songs",
+ "songs": 28,
+ "bereiche": {
+  "Silben-Dynamik": [
+   6.02,
+   7.87,
+   9.74
+  ],
+  "Silben-Spitzen": [
+   3.9,
+   5.12,
+   7.13
+  ],
+  "Wort-Spitzen": [
+   1.79,
+   2.54,
+   3.36
+  ],
+  "Lautstärke-Schwankung": [
+   1.81,
+   4.84,
+   9.39
+  ],
+  "Crest 100 ms": [
+   10.48,
+   11.44,
+   11.95
+  ],
+  "Crest 1 s": [
+   12.98,
+   14.23,
+   15.03
+  ],
+  "Zischlaute (S zu Vokal)": [
+   -4.83,
+   -2.27,
+   2.17
+  ],
+  "Abstand Wort zu Lücke": [
+   15.53,
+   20.68,
+   37.7
+  ],
+  "Nachklang nach Wortende": [
+   -18.61,
+   -16.76,
+   -13.62
+  ],
+  "Spektrale Neigung": [
+   -0.75,
+   -0.2,
+   0.74
+  ],
+  "Bass < 250 Hz": [
+   -13.55,
+   -9.84,
+   -6.58
+  ],
+  "Tiefe Mitten 250 Hz–2 kHz": [
+   -2.13,
+   -1.53,
+   -0.82
+  ],
+  "Hohe Mitten 2–8 kHz": [
+   -11.08,
+   -9.17,
+   -7.07
+  ],
+  "Höhen > 8 kHz": [
+   -18.39,
+   -14.45,
+   -11.06
+  ],
+  "Breite (Seite zu Mitte)": [
+   -20.21,
+   -11.18,
+   -7.16
+  ],
+  "Vocal über Beat": [
+   2.44,
+   3.35,
+   5.41
+  ]
+ },
+ "oktaven": [
+  [
+   125,
+   -24.54,
+   -18.34,
+   -15.01
+  ],
+  [
+   250,
+   -9.56,
+   -7.35,
+   -5.48
+  ],
+  [
+   500,
+   -6.74,
+   -4.99,
+   -3.97
+  ],
+  [
+   1000,
+   -8.7,
+   -6.78,
+   -5.13
+  ],
+  [
+   2000,
+   -11.31,
+   -8.65,
+   -7.0
+  ],
+  [
+   4000,
+   -15.25,
+   -13.67,
+   -10.91
+  ],
+  [
+   8000,
+   -16.18,
+   -13.47,
+   -10.69
+  ],
+  [
+   16000,
+   -24.76,
+   -18.99,
+   -13.41
+  ]
+ ],
+ "einheiten": {
+  "Silben-Dynamik": "dB",
+  "Silben-Spitzen": "dB",
+  "Wort-Spitzen": "LU",
+  "Lautstärke-Schwankung": "LU",
+  "Crest 100 ms": "dB",
+  "Crest 1 s": "dB",
+  "Zischlaute (S zu Vokal)": "dB",
+  "Abstand Wort zu Lücke": "dB",
+  "Nachklang nach Wortende": "dB",
+  "Spektrale Neigung": "dB/Okt.",
+  "Bass < 250 Hz": "dB",
+  "Tiefe Mitten 250 Hz–2 kHz": "dB",
+  "Hohe Mitten 2–8 kHz": "dB",
+  "Höhen > 8 kHz": "dB",
+  "Breite (Seite zu Mitte)": "dB",
+  "Vocal über Beat": "dB"
+ },
+ "korrektur": {
+  "quelle": "MUSDB18-Test, 14 Ausschnitte à 90 s: Median (HTDemucs-Stem minus echter Vocal-Stem)",
+  "felder": {
+   "luecke": 5.5,
+   "raumNachklang": -2.2,
+   "vocalZuBeat": 0.4
+  },
+  "oktaven_ab_hz": 100
+ }
+}

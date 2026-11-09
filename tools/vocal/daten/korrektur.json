@@ -1,0 +1,5 @@
+{
+ "quelle": "MUSDB18-Test, 14 Ausschnitte à 90 s: Median (HTDemucs-Stem minus echter Vocal-Stem)",
+ "felder": {"luecke": 5.5, "raumNachklang": -2.2, "vocalZuBeat": 0.4},
+ "oktaven_ab_hz": 100
+}
