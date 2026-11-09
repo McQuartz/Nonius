@@ -201,7 +201,7 @@ void NoniusEditor::resized()
 
 bool NoniusEditor::targetMode() const
 {
-    return shown != nullptr && ! nonius::isVocal (shown->role) && ! proc.analyser().profile().octaves.empty();
+    return shown != nullptr && ! proc.analyser().profileFor (shown->role).octaves.empty();
 }
 
 void NoniusEditor::timerCallback()
@@ -235,7 +235,9 @@ void NoniusEditor::rebuildLists()
     for (const auto& f : shown->findings)
     {
         if (nonius::stageOf (f.id) > stage) continue;
-        if (isIssue (f)) issues.push_back (&f);
+        // Rohspur: Vorschläge mit Fix (z. B. EQ-Schritte zum Ziel) sind der Fahrplan und gehören in die Liste
+        const bool roadmap = shown->role == nonius::PluginRole::rawVocal && f.severity == nonius::Severity::info && ! f.fix.empty();
+        if (isIssue (f) || roadmap) issues.push_back (&f);
         else if (f.severity != nonius::Severity::ok) hints.push_back (&f);
     }
 }
@@ -343,8 +345,9 @@ void NoniusEditor::paintSpectrum (juce::Graphics& g, juce::Rectangle<int> area)
     g.setColour (C::panel);
     g.fillRoundedRectangle (area.toFloat(), 6.0f);
 
-    const auto& prof = proc.analyser().profile();
+    const auto& prof = proc.analyser().profileFor (shown != nullptr ? shown->role : proc.getRole());
     const bool target = targetMode();
+    const bool vocal = shown != nullptr && nonius::isVocal (shown->role);
     const bool valid = shown != nullptr && shown->valid;
     const bool beat = shown != nullptr && shown->role == nonius::PluginRole::beat;
 
@@ -356,7 +359,7 @@ void NoniusEditor::paintSpectrum (juce::Graphics& g, juce::Rectangle<int> area)
     juce::String status;
     if (valid) status << juce::String ((int) std::round (shown->secondsMeasured)) << " s gemessen";
     else       status << juce::String (proc.analyser().bufferedSeconds(), 1) << " s gesammelt";
-    if (target) status << u8 ("  ·  gegen ") << prof.songs << " Referenz-Songs";
+    if (target) status << u8 ("  ·  gegen ") << prof.songs << (vocal ? " Referenz-Vocals" : " Referenz-Songs");
     else if (valid) status << u8 ("  ·  Vocal-Zielkurve folgt (braucht Referenz-Stems)");
     if (! proc.isPlaying()) status << u8 ("  ·  pausiert");
     g.setColour (frozen ? C::accent : C::muted);
@@ -434,7 +437,7 @@ void NoniusEditor::paintSpectrum (juce::Graphics& g, juce::Rectangle<int> area)
         }
 
         // Live-Strich: was gerade spielt
-        if (i < live.size() && (! target || hasRange))
+        if (i < live.size() && live.size() == centres.size() && (! target || hasRange))
         {
             const float y = yOf (target ? live[i] - p50 : live[i]);
             g.setColour (C::text.withAlpha (notRated ? 0.3f : 0.9f));
@@ -640,13 +643,6 @@ std::vector<NoniusEditor::Meter> NoniusEditor::buildMeters() const
         x.valueText = x.hasValue ? text : u8 ("–");
         m.push_back (x);
     };
-    auto noTarget = [&] (const char* label, bool has, double v, double scaleMin, double scaleMax, juce::String text)
-    {
-        Meter x;
-        x.label = u8 (label); x.hasValue = valid && has; x.value = v; x.lo = scaleMin; x.hi = scaleMax; x.hasTarget = false;
-        x.valueText = x.hasValue ? text : u8 ("–");
-        m.push_back (x);
-    };
     auto fromProfile = [&] (const char* label, const char* key, bool has, double v, juce::String text)
     {
         const auto it = prof.ranges.find (key);
@@ -657,6 +653,22 @@ std::vector<NoniusEditor::Meter> NoniusEditor::buildMeters() const
         x.valueText = x.hasValue ? text : u8 ("–");
         m.push_back (x);
         return true;
+    };
+    const auto& vprof = proc.analyser().vocalProfile();
+    const bool vocalTarget = ! vprof.empty();
+    // Vocal-Wert gegen die Referenz-Vocals, ohne Profil gegen feste Startwerte (lo/hi)
+    auto vocalMeter = [&] (const char* label, const char* key, bool has, double v, double lo, double hi, juce::String text)
+    {
+        Meter x;
+        x.label = u8 (label); x.hasValue = valid && has; x.value = v; x.lo = lo; x.hi = hi;
+        if (vocalTarget)
+            if (const auto it = vprof.ranges.find (key); it != vprof.ranges.end() && it->second.valid)
+            {
+                x.lo = it->second.p10; x.hi = it->second.p90; x.mid = it->second.p50; x.hasMid = true;
+            }
+        if (! x.hasMid && lo >= hi) { x.hasTarget = false; x.lo = v - 12.0; x.hi = v + 12.0; } // nur Wert zeigen
+        x.valueText = x.hasValue ? text : u8 ("–");
+        m.push_back (x);
     };
     auto num = [] (double v, int d, const char* unit)
     {
@@ -673,17 +685,20 @@ std::vector<NoniusEditor::Meter> NoniusEditor::buildMeters() const
             fixed ("Rauschen in Pausen (A)", t.noiseFloorReliable && t.noiseFloorDbA > -149.0, t.noiseFloorDbA, -100.0, -60.0, num (t.noiseFloorDbA, 0, "dBFS"));
             fixed ("Raumhall (Abklingwert)", t.reverbDecays >= 10, t.reverbSeconds, 0.0, 0.32, num (t.reverbSeconds, 2, "s"));
             fixed ("Rumpeln unter 80 Hz", t.rumbleDb > -149.0, t.rumbleDb, -60.0, -25.0, num (t.rumbleDb, 0, "dB"));
-            noTarget ("Abstand Wort zu Lücke", shown->gapDepthDb > 0, shown->gapDepthDb, 0.0, 45.0, num (shown->gapDepthDb, 1, "dB"));
+            vocalMeter ("Silben-Dynamik (Ziel: fertige Vocals)", "Silben-Dynamik", shown->vocalDyn.syllableDb > 0, shown->vocalDyn.syllableDb, 0, 0, num (shown->vocalDyn.syllableDb, 1, "dB"));
             break;
 
         case nonius::PluginRole::leadVocal:
-            fixed ("Zischlaute (S zu Vokal)", t.sibilantToVowelDb > -149.0, t.sibilantToVowelDb, -14.0, -1.0, num (t.sibilantToVowelDb, 1, "dB"));
-            fixed (u8"Lautstärke-Schwankung", t.loudness.shortTermP90 > -149.0, shown->spreadLu, 0.0, 6.0, num (shown->spreadLu, 1, "LU"));
-            fixed ("Crest 100 ms", true, t.crest100msDb, 6.5, 14.0, num (t.crest100msDb, 1, "dB"));
-            fixed (u8"Wortspitzen", true, t.wordPeaks.perMinute, 0.0, 5.0, num (t.wordPeaks.perMinute, 1, "/min"));
+        {
+            const auto& d = shown->vocalDyn;
+            vocalMeter ("Silben-Dynamik (Kompression)", "Silben-Dynamik", d.syllableDb > 0, d.syllableDb, 0, 0, num (d.syllableDb, 1, "dB"));
+            vocalMeter ("Zischlaute (S zu Vokal)", "Zischlaute (S zu Vokal)", t.sibilantToVowelDb > -149.0, t.sibilantToVowelDb, -14.0, -1.0, num (t.sibilantToVowelDb, 1, "dB"));
+            vocalMeter ("Crest 100 ms", "Crest 100 ms", true, t.crest100msDb, 6.5, 14.0, num (t.crest100msDb, 1, "dB"));
+            vocalMeter ("Spektrale Neigung", "Spektrale Neigung", true, t.spectrum.tiltDbPerOct, 0, 0, num (t.spectrum.tiltDbPerOct, 1, "dB/Okt."));
+            vocalMeter ("Abstand Wort zu Lücke", "Abstand Wort zu Lücke", d.gapDepthDb > 0, d.gapDepthDb, 0, 0, num (d.gapDepthDb, 1, "dB"));
+            vocalMeter ("Breite (Seite zu Mitte)", "Breite (Seite zu Mitte)", shown->sideToMid > -100.0, shown->sideToMid, 0, 0, num (shown->sideToMid, 1, "dB"));
             fixed ("Rumpeln unter 80 Hz", t.rumbleDb > -149.0, t.rumbleDb, -60.0, -25.0, num (t.rumbleDb, 0, "dB"));
-            noTarget ("Abstand Wort zu Lücke", shown->gapDepthDb > 0, shown->gapDepthDb, 0.0, 45.0, num (shown->gapDepthDb, 1, "dB"));
-            noTarget ("Spektrale Neigung", true, t.spectrum.tiltDbPerOct, -4.0, 1.0, num (t.spectrum.tiltDbPerOct, 1, "dB/Okt."));
+        }
             break;
 
         case nonius::PluginRole::beat:

@@ -27,8 +27,8 @@ namespace nonius
         bool startsWith (const std::string& s, char c) { return ! s.empty() && s[0] == c; }
     }
 
-    LiveAnalyser::LiveAnalyser (std::shared_ptr<const ReferenceProfile> p)
-        : juce::Thread ("Nonius Analyse"), refProfile (std::move (p))
+    LiveAnalyser::LiveAnalyser (std::shared_ptr<const ReferenceProfile> p, std::shared_ptr<const ReferenceProfile> v)
+        : juce::Thread ("Nonius Analyse"), refProfile (std::move (p)), vocProfile (std::move (v))
     {
         centres = refProfile->octaveCentres;
         if (centres.empty()) centres = { 31.5, 62.5, 125, 250, 500, 1000, 2000, 4000, 8000, 16000 };
@@ -227,43 +227,25 @@ namespace nonius
 
         const auto& t = s->track;
         const auto& prof = *refProfile;
-        s->octaveCentres = centres;
-        s->octaveBalance = octaveBalance (t, centres);
+        const auto& activeProf = profileFor (s->role);
+        s->octaveCentres = activeProf.octaveCentres.empty() ? centres : activeProf.octaveCentres;
+        s->octaveBalance = octaveBalance (t, s->octaveCentres);
         s->four = fourBandBalance (t);
         s->sideToMid = sideToMidDb (audio);
         s->spreadLu = t.loudness.shortTermP90 - t.loudness.shortTermP10;
-        {
-            const std::size_t frame = (std::size_t) (sr * 0.02);
-            std::vector<double> lv;
-            for (std::size_t i = 0; i + frame <= audio.numSamples(); i += frame)
-            {
-                double p = 0;
-                for (const auto& ch : audio.channels)
-                    for (std::size_t j = i; j < i + frame; ++j) p += (double) ch[j] * ch[j];
-                lv.push_back (toDb (p / (double) (frame * audio.channels.size())));
-            }
-            if (lv.size() > 50)
-            {
-                auto sorted = lv;
-                std::sort (sorted.begin(), sorted.end());
-                const double p95 = sorted[sorted.size() * 95 / 100];
-                std::vector<double> act; // digitale Stille / lange Pausen ausklammern
-                for (double v : sorted) if (v > p95 - 60.0) act.push_back (v);
-                if (act.size() > 50) s->gapDepthDb = p95 - act[act.size() / 10];
-            }
-        }
+        s->vocalDyn = measureVocalDynamics (audio);
 
         auto& out = s->findings;
         if (s->role == PluginRole::rawVocal)
         {
             // Rohaufnahme: Aufnahme-Checks gelten, Dynamik nur als Info
-            out = evaluateVocal (t, true);
+            out = evaluateVocalWithProfile (t, s->vocalDyn, s->sideToMid, *vocProfile, true);
         }
         else if (s->role == PluginRole::leadVocal)
         {
             // Bearbeitete Spur: Aufnahme-Checks passen hier nicht (Hall/Delay füllen die Pausen,
             // Pegel ist nach Kompressor/Limiter bewusst hoch), außer DC-Offset
-            for (auto& f : evaluateVocal (t, false))
+            for (auto& f : evaluateVocalWithProfile (t, s->vocalDyn, s->sideToMid, *vocProfile, false))
                 if (! startsWith (f.id, 'A') || f.id == "A09") out.push_back (std::move (f));
         }
         else

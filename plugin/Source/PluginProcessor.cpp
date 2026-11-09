@@ -6,7 +6,7 @@ NoniusProcessor::NoniusProcessor()
     : AudioProcessor (BusesProperties()
                           .withInput ("Input", juce::AudioChannelSet::stereo(), true)
                           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
-      live (nonius::standardProfile())
+      live (nonius::standardProfile(), nonius::vocalProfile())
 {
 }
 

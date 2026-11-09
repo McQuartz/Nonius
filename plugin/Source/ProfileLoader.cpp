@@ -44,20 +44,35 @@ namespace nonius
         }
     }
 
-    std::shared_ptr<const ReferenceProfile> standardProfile()
+    namespace
     {
-        static const std::shared_ptr<const ReferenceProfile> profile = []
+        std::shared_ptr<const ReferenceProfile> load (const char* fileName, const char* embedded, int embeddedSize)
         {
             const auto user = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
-                                  .getChildFile ("Nonius").getChildFile ("standard-profil.json");
+                                  .getChildFile ("Nonius").getChildFile (fileName);
             if (user.existsAsFile())
             {
                 auto p = parse (user.loadFileAsString());
                 if (! p.empty()) return std::make_shared<const ReferenceProfile> (std::move (p));
             }
-            return std::make_shared<const ReferenceProfile> (
-                parse (juce::String::fromUTF8 (BinaryData::standardprofil_json, BinaryData::standardprofil_jsonSize)));
-        }();
+            if (embedded == nullptr) return std::make_shared<const ReferenceProfile>();
+            return std::make_shared<const ReferenceProfile> (parse (juce::String::fromUTF8 (embedded, embeddedSize)));
+        }
+    }
+
+    std::shared_ptr<const ReferenceProfile> standardProfile()
+    {
+        static const auto profile = load ("standard-profil.json", BinaryData::standardprofil_json, BinaryData::standardprofil_jsonSize);
+        return profile;
+    }
+
+    std::shared_ptr<const ReferenceProfile> vocalProfile()
+    {
+       #if NONIUS_HAS_VOCAL_PROFILE
+        static const auto profile = load ("vocal-profil.json", BinaryData::vocalprofil_json, BinaryData::vocalprofil_jsonSize);
+       #else
+        static const auto profile = load ("vocal-profil.json", nullptr, 0);
+       #endif
         return profile;
     }
 }

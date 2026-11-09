@@ -31,8 +31,7 @@ namespace nonius
         FourBands four;
         double sideToMid = -150;
         double spreadLu = 0;              // Short-term P90 − P10
-        double gapDepthDb = 0;            // Abstand laute Wortteile (P95) zu Lücken (P10), 20-ms-Fenster;
-                                          // klein = Lücken gefüllt (Hall, Delay, starke Kompression)
+        VocalDynamics vocalDyn;           // Silben-Dynamik, Abstand Wort zu Lücke (nonius/profile.h)
     };
 
     class LiveAnalyser : private juce::Thread
@@ -40,7 +39,7 @@ namespace nonius
     public:
         static constexpr double historySeconds = 30.0;
 
-        explicit LiveAnalyser (std::shared_ptr<const ReferenceProfile> profile);
+        LiveAnalyser (std::shared_ptr<const ReferenceProfile> profile, std::shared_ptr<const ReferenceProfile> vocalProfile);
         ~LiveAnalyser() override;
 
         // Nicht gleichzeitig mit push() aufrufen (prepareToPlay).
@@ -62,6 +61,12 @@ namespace nonius
         double bufferedSeconds() const noexcept { return bufferedSecs.load(); }
 
         const ReferenceProfile& profile() const noexcept { return *refProfile; }
+        const ReferenceProfile& vocalProfile() const noexcept { return *vocProfile; }
+        // Profil, gegen das eine Rolle bewertet wird (Vocals: Referenz-Vocals, sonst komplette Mixe)
+        const ReferenceProfile& profileFor (PluginRole r) const noexcept
+        {
+            return isVocal (r) && ! vocProfile->empty() ? *vocProfile : *refProfile;
+        }
 
     private:
         void run() override;
@@ -70,7 +75,7 @@ namespace nonius
         void analyse();
         void publish (std::shared_ptr<const Snapshot> s);
 
-        std::shared_ptr<const ReferenceProfile> refProfile;
+        std::shared_ptr<const ReferenceProfile> refProfile, vocProfile;
         std::vector<double> centres;
 
         // FIFO Audio-Thread -> Analyse-Thread
